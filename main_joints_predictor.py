@@ -14,7 +14,10 @@ else:
     device = torch.device('cpu')
 
 
-def train(writer, name, epoch_idx, data_loader, model, optimizer, criterion, ckpt_path, save_ckpt):
+def train(writer, name, epoch_idx, data_loader, model, 
+    optimizer, criterion, ckpt_path, save_ckpt,
+    train_loss1=True, train_loss2=True):
+    assert train_loss1 or train_loss2
     for idx, (img, joints, task_id, next_joints) in enumerate(data_loader):
         img = img.to(device)
         joints = joints.to(device)
@@ -25,7 +28,11 @@ def train(writer, name, epoch_idx, data_loader, model, optimizer, criterion, ckp
         pred_joints, recognized_joints = model(img, joints, task_id)
         loss1 = criterion(pred_joints, next_joints)
         loss2 = criterion(recognized_joints, joints)
-        loss = loss1 + loss2
+        loss = 0
+        if train_loss1:
+            loss = loss1
+        if train_loss2:
+            loss = loss + loss2
         loss.backward()
         optimizer.step()
 
@@ -41,24 +48,35 @@ def main(writer, name, batch_size=4):
     ckpt_path = r'/share/yzhou298'
     save_ckpt = True
     # load data
-    dataset = RobotDataset(data_dir='./data/', use_trigonometric_representation=True)
+    dataset = RobotDataset(
+        data_dir='./data/', 
+        use_trigonometric_representation=True, 
+        use_delta=True,
+        normalize=True,
+        ending_angles_as_next=True)
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                           shuffle=True, num_workers=2)
     # load model
     model = Backbone(128, 2, 3, 128)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters())
-    criterion = nn.MSELoss()
+    criterion = nn.L1Loss()
 
     # train n epoches
     for i in range(1):
-        train(writer, name, i, data_loader, model, optimizer, criterion, ckpt_path, save_ckpt)
+        train(writer, name, 2 * i, data_loader, model, optimizer, 
+            criterion, ckpt_path, save_ckpt,
+            train_loss1=False, train_loss2=True)
+        train(writer, name, 2 * i + 1, data_loader, model, optimizer, 
+            criterion, ckpt_path, save_ckpt,
+            train_loss1=True, train_loss2=False)
     # test
     # save checkpoint
 
 
 if __name__ == '__main__':
-    name = 'train3-3-conv-img-encoder-relu-5-traces-aux-loss-joint-angle'
+    name = 'train5-4-pred-ending-motion'
+    # name = 'train4-1-traces-aux-loss-joint-angle-l1'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

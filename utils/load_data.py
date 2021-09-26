@@ -8,7 +8,9 @@ from matplotlib import pyplot as plt
 
 
 class RobotDataset(Dataset):
-    def __init__(self, data_dir, task_txt='instructions.txt', joints_log='joints.npy', use_trigonometric_representation=False, use_delta=False):
+    def __init__(self, data_dir, task_txt='instructions.txt', joints_log='joints.npy', 
+        use_trigonometric_representation=False, use_delta=False, normalize=False,
+        ending_angles_as_next=False):
 
         # Find all the task instructions
         instructions_by_trace_id = {}
@@ -32,13 +34,16 @@ class RobotDataset(Dataset):
             joints_log_np[joints_log_np < 0] += 2 * np.pi
             joints_log_np[joints_log_np > 2 * np.pi] -= 2 * np.pi
             self.joints.append(joints_log_np[:-1])
-            self.next_joints.append(joints_log_np[1:])
+            if not ending_angles_as_next:
+                self.next_joints.append(joints_log_np[1:])
+            else:
+                self.next_joints.append(np.tile(joints_log_np[-1:], (joints_log_np.shape[0] - 1, 1)))
             for i in range(joints_log_np.shape[0] - 1):
                 self.img_paths.append(os.path.join(trace, str(i) + '.png'))
             trace_id = self._get_trace_id(trace)
             trace_length = joints_log_np.shape[0] - 1
             self.instructions.extend([instructions_by_trace_id[trace_id]] * trace_length)
-            # if count == 3:
+            # if count == 1:
             #     print(self.img_paths)
             #     print(len(self.instructions))
             #     break
@@ -64,6 +69,19 @@ class RobotDataset(Dataset):
         # If use delta, which means that the output is the distance to move, instead of the position
         if use_delta:
             self.next_joints = self.next_joints - self.joints
+
+        # If normalize data.
+        if normalize:
+            std_joints = np.std(self.joints)
+            mean_joints = np.mean(self.joints)
+            self.joints = (self.joints - mean_joints) / std_joints
+            std_next_joints = np.std(self.next_joints)
+            mean_next_joints = np.mean(self.next_joints)
+            self.next_joints = (self.next_joints - mean_next_joints) / std_next_joints
+            print('std:', std_next_joints, 'mean:', mean_next_joints)
+            input()
+
+        print(self.joints, self.next_joints)
         print(len(self.joints), len(self.img_paths), len(self.instructions), len(self.next_joints))
     
     def _get_trace_id(self, trace_dir):
@@ -125,7 +143,9 @@ class ImgToJointDataset(Dataset):
 
 
 if __name__ == '__main__':
-    dataset = ImgToJointDataset(data_dir='../data/', use_trigonometric_representation=True)
+    dataset = RobotDataset(data_dir='../data/',
+        use_trigonometric_representation=True, use_delta=True, normalize=False,
+        ending_angles_as_next=True)
 
     # for img, joints in dataset:
     #     print(img, joints)

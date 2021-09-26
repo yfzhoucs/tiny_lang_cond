@@ -90,6 +90,14 @@ class Recorder:
         with open(self.data_dir + '/instructions.txt', 'a') as f:
             f.write(f'{self.data_id} {object_id}\n')
 
+    def record_object_positions(self, object_position_list):
+        with open(self.data_dir + '/object_lists.txt', 'a') as f:
+            for i in range(len(object_position_list)):
+                position_x = object_list[i][0]
+                position_y = object_list[i][1]
+                radius = object_list[i][2]
+                f.write(f'{self.data_id} {position_x} {position_y} {radius}\n')
+
 
 # https://stackoverflow.com/questions/46996866/sampling-uniformly-within-the-unit-circle
 def even_distribution_in_a_circle(circle_radius=50):

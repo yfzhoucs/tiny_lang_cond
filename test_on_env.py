@@ -29,9 +29,16 @@ def convert_obversations_to_torch(joints, img):
     return joints, img
 
 
-def convert_action_to_numpy(action):
+def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False):
     action = action.detach().numpy()
-    action_rad = np.array([0, 0])
+
+    if use_delta:
+        current_joint_angles = current_joint_angles.to('cpu').numpy()
+        action = action * 0.05739997122 + 0.002383889
+        action = current_joint_angles + action
+
+    # Convert from sin-cos space to rad space
+    action_rad = np.array([0., 0.])
     for i in range(2):
         if action[0][i * 2 + 1] < -1:
             action[0][i * 2 + 1] = -1
@@ -39,11 +46,13 @@ def convert_action_to_numpy(action):
             action[0][i * 2 + 1] = 1
         action_rad[i] = np.arccos(action[0][i * 2 + 1])
         if action[0][i * 2] < 0:
-            action_rad[i] += np.pi - action_rad[i]
+            action_rad[i] += 2 * (np.pi - action_rad[i])
+    print(action, action_rad)
+
     return action_rad
 
 
-def execution_loop(model, env, robot, task_id, target_x, target_y, error_limit=5):
+def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, error_limit=5):
     task_id = torch.tensor([task_id], dtype=torch.int32)
 
     # Get observations from t_0
@@ -52,26 +61,33 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, error_limit=5
     squared_error = l2(robot.get_end_position(), (target_x, target_y))
 
     # Start looping
+    step = 0
     while squared_error > error_limit * error_limit:
 
         # Predict action from the model
         joints, img = convert_obversations_to_torch(joints, img)
+        img = img.to('cuda')
+        joints = joints.to('cuda')
+        task_id = task_id.to('cuda')
         action, _ = model(img, joints, task_id)
+        action = action.to('cpu')
 
         # Execute action
-        action = convert_action_to_numpy(action)
+        action = convert_action_to_numpy(action, joints, use_delta)
         joints, _, _, _ = env.step(action)
         img = env.render(mode="rgb_array")
 
         # Compute error
         squared_error = l2(robot.get_end_position(), (target_x, target_y))
-        print('error', np.sqrt(squared_error))
-        input()
+
+        step += 1
+        print('error', step, np.sqrt(squared_error))
+        # input()
     print('done')
     input()
 
 
-def main(model_path):
+def main(model_path, use_delta):
     # Create an environment
     screen_width = 128
     screen_height = 128
@@ -92,16 +108,17 @@ def main(model_path):
     target_y = object_geom_list.get_objects()[goal][1]
 
     # load model
-    model = Backbone(128, 2, 3, 128, device=torch.device('cpu'))
+    model = Backbone(128, 2, 3, 128, device=torch.device('cuda')).to(torch.device('cuda'))
     model.load_state_dict(torch.load(model_path))
 
     # Execution loop
-    execution_loop(model, env, robot, goal, target_x, target_y)
+    execution_loop(model, env, robot, goal, target_x, target_y, use_delta)
 
     # Close the environment
     env.close()
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train3-2-conv-img-encoder-relu-5-traces-aux-loss-joint-angle/0.pth'
-    main(model_path)
+    model_path = '/share/yzhou298/train5-3-traces-aux-loss-joint-angle-delta-action-normalize/1.pth'
+    use_delta = True
+    main(model_path, use_delta)
