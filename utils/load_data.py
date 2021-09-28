@@ -142,14 +142,213 @@ class ImgToJointDataset(Dataset):
         return img, joints
 
 
-if __name__ == '__main__':
-    dataset = RobotDataset(data_dir='../data/',
-        use_trigonometric_representation=True, use_delta=True, normalize=False,
-        ending_angles_as_next=True)
+class ComprehensiveVisualDataset(Dataset):
+    def __init__(self, data_dir, joints_log='joints.npy', 
+        end_position_log='end_positions.npy', 
+        object_list_txt='object_lists.txt',
+        use_trigonometric_representation=False):
 
-    # for img, joints in dataset:
-    #     print(img, joints)
-    #     input()
+        # Collect all object lists
+        object_lists_by_trace_id = {}
+        object_lists_fd = open(os.path.join(data_dir, object_list_txt), 'r')
+        for line in object_lists_fd:
+            tokens = line.strip().strip(',').split(', ')
+            num_objects = len(tokens) // 3
+            objects_in_this_trace = []
+            for i in range(num_objects):
+                objects_in_this_trace.append(float(tokens[i * 3 + 1]))
+                objects_in_this_trace.append(float(tokens[i * 3 + 2]))
+            trace_id = int(tokens[0])
+            object_lists_by_trace_id[trace_id] = objects_in_this_trace
+        # print(object_lists_by_trace_id)
+
+        # Find all the images and joints
+        self.img_paths = []
+        self.joints = []
+        self.end_positions = []
+        self.object_lists = []
+        # https://stackoverflow.com/questions/973473/getting-a-list-of-all-subdirectories-in-the-current-directory
+        all_dirs = [ f.path for f in os.scandir(data_dir) if f.is_dir() ]
+
+        count = 0
+        for trace in all_dirs:
+            count += 1
+
+            # Collect joint angles
+            joints_log_np = np.load(os.path.join(trace, joints_log))
+            joints_log_np[joints_log_np < 0] += 2 * np.pi
+            joints_log_np[joints_log_np > 2 * np.pi] -= 2 * np.pi
+            self.joints.append(joints_log_np[:])
+
+            # Collect end positions
+            end_positions_log_np = np.load(os.path.join(trace, end_position_log))
+            self.end_positions.append(end_positions_log_np[:])
+
+            # Collect img paths
+            for i in range(joints_log_np.shape[0]):
+                self.img_paths.append(os.path.join(trace, str(i) + '.png'))
+            
+            # Add object lists
+            trace_length = joints_log_np.shape[0]
+            trace_id = self._get_trace_id(trace)
+            self.object_lists.extend([object_lists_by_trace_id[trace_id]] * trace_length)
+
+            # Debugging printing
+            # if count == 2:
+            #     print(self.img_paths)
+            #     print(self.joints)
+            #     break
+
+        self.joints = np.concatenate(self.joints)
+        self.end_positions = np.concatenate(self.end_positions)
+        self.object_lists = np.array(self.object_lists)
+        # print(self.object_lists[-50:])
+        # print(self.object_lists.shape)
+        # print(self.img_paths[-50:])
+
+        # If use trigo mode
+        if use_trigonometric_representation:
+            transform_matrix = np.array([[1, 1, 0, 0], [0, 0, 1, 1]])
+            self.joints = np.dot(self.joints, transform_matrix)
+            # print(self.joints)
+            for i in range(2):
+                self.joints[:, 2 * i] = np.sin(self.joints[:, 2 * i])
+                self.joints[:, 2 * i + 1] = np.cos(self.joints[:, 2 * i + 1])
+            # print(self.joints)
+        print(len(self.joints), len(self.img_paths), len(self.end_positions))
+    
+    def _get_trace_id(self, trace_dir):
+        trace_id = int(trace_dir.strip(r'.png').split(r'/')[-1])
+        return trace_id
+
+    def __len__(self):
+        return len(self.joints)
+    
+    def __getitem__(self, index):
+        img = torch.tensor(io.imread(self.img_paths[index])[:,:,:3] / 255, dtype=torch.float32)
+        joints = torch.tensor(self.joints[index], dtype=torch.float32)
+        end_position = torch.tensor(self.end_positions[index], dtype=torch.float32)
+        object_list = torch.tensor(self.object_lists[index], dtype=torch.float32)
+        return img, joints, end_position, object_list
+
+
+class TargetPositionlDataset(Dataset):
+    def __init__(self, data_dir, joints_log='joints.npy', 
+        end_position_log='end_positions.npy', 
+        object_list_txt='object_lists.txt',
+        task_txt='instructions.txt',
+        use_trigonometric_representation=False):
+
+        # Collect all object lists
+        object_lists_by_trace_id = {}
+        object_lists_fd = open(os.path.join(data_dir, object_list_txt), 'r')
+        for line in object_lists_fd:
+            tokens = line.strip().strip(',').split(', ')
+            num_objects = len(tokens) // 3
+            objects_in_this_trace = []
+            for i in range(num_objects):
+                objects_in_this_trace.append(float(tokens[i * 3 + 1]))
+                objects_in_this_trace.append(float(tokens[i * 3 + 2]))
+            trace_id = int(tokens[0])
+            object_lists_by_trace_id[trace_id] = objects_in_this_trace
+
+        # Collect all instructions
+        instructions_by_trace_id = {}
+        task_inst_fd = open(os.path.join(data_dir, task_txt), 'r')
+        for line in task_inst_fd:
+            tokens = line.split(' ')
+            instructions_by_trace_id[int(tokens[0])] = int(tokens[1])
+
+        # Find all the images and joints
+        self.img_paths = []
+        self.joints = []
+        self.end_positions = []
+        self.object_lists = []
+        self.instructions = []
+        self.target_positions = []
+        # https://stackoverflow.com/questions/973473/getting-a-list-of-all-subdirectories-in-the-current-directory
+        all_dirs = [ f.path for f in os.scandir(data_dir) if f.is_dir() ]
+
+        count = 0
+        for trace in all_dirs:
+            count += 1
+
+            # Collect joint angles
+            joints_log_np = np.load(os.path.join(trace, joints_log))
+            joints_log_np[joints_log_np < 0] += 2 * np.pi
+            joints_log_np[joints_log_np > 2 * np.pi] -= 2 * np.pi
+            self.joints.append(joints_log_np[:])
+
+            # Collect end positions
+            end_positions_log_np = np.load(os.path.join(trace, end_position_log))
+            self.end_positions.append(end_positions_log_np[:])
+
+            # Collect img paths
+            for i in range(joints_log_np.shape[0]):
+                self.img_paths.append(os.path.join(trace, str(i) + '.png'))
+            
+            # Add object lists
+            trace_length = joints_log_np.shape[0]
+            trace_id = self._get_trace_id(trace)
+            task_id = instructions_by_trace_id[trace_id]
+            self.object_lists.extend([object_lists_by_trace_id[trace_id]] * trace_length)
+            self.instructions.extend([task_id] * trace_length)
+            self.target_positions.extend([object_lists_by_trace_id[trace_id][task_id * 2:task_id * 2 + 2]] * trace_length)
+
+            # # Debugging printing
+            # if count == 2:
+            #     print(self.img_paths)
+            #     # print(self.joints)
+            #     break
+
+        self.joints = np.concatenate(self.joints)
+        self.end_positions = np.concatenate(self.end_positions)
+        self.object_lists = np.array(self.object_lists)
+        self.target_positions = np.array(self.target_positions)
+        # print(self.object_lists[-50:])
+        # print(self.object_lists.shape)
+        # print(self.img_paths[-50:])
+
+        # If use trigo mode
+        if use_trigonometric_representation:
+            transform_matrix = np.array([[1, 1, 0, 0], [0, 0, 1, 1]])
+            self.joints = np.dot(self.joints, transform_matrix)
+            # print(self.joints)
+            for i in range(2):
+                self.joints[:, 2 * i] = np.sin(self.joints[:, 2 * i])
+                self.joints[:, 2 * i + 1] = np.cos(self.joints[:, 2 * i + 1])
+            # print(self.joints)
+            self.joints = self.joints * 100
+        print(len(self.joints), len(self.img_paths), len(self.end_positions))
+    
+    def _get_trace_id(self, trace_dir):
+        trace_id = int(trace_dir.strip(r'.png').split(r'/')[-1])
+        return trace_id
+
+    def __len__(self):
+        return len(self.joints)
+    
+    def __getitem__(self, index):
+        img = torch.tensor(io.imread(self.img_paths[index])[:,:,:3] / 255, dtype=torch.float32)
+        joints = torch.tensor(self.joints[index], dtype=torch.float32)
+        task_id = torch.tensor(self.instructions[index], dtype=torch.int32)
+        end_position = torch.tensor(self.end_positions[index], dtype=torch.float32)
+        object_list = torch.tensor(self.object_lists[index], dtype=torch.float32)
+        target_position = torch.tensor(self.target_positions[index], dtype=torch.float32)
+        return img, joints, task_id, end_position, object_list, target_position
+
+
+if __name__ == '__main__':
+    # dataset = RobotDataset(data_dir='../data/',
+    #     use_trigonometric_representation=True, use_delta=True, normalize=False,
+    #     ending_angles_as_next=True)
+
+    dataset = TargetPositionlDataset(
+        '../data_position/', use_trigonometric_representation=True)
+
+    for img, joints, task_id, end_position, object_list, target_position in dataset:
+        print(joints, task_id, end_position, object_list, target_position)
         # print(img)
-        # plt.imshow(img)
-        # plt.show()
+        plt.imshow(img)
+        plt.show()
+        # input()

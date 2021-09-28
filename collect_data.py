@@ -70,6 +70,7 @@ class Recorder:
         self.data_dir = data_dir
         self.data_id = data_id
         self.joints_seq = []
+        self.end_positions_seq = []
         self.id_dir = os.path.join(data_dir, str(data_id))
         if not os.path.isdir(self.id_dir):
             os.mkdir(self.id_dir)
@@ -79,24 +80,32 @@ class Recorder:
         with open(self.id_dir + '/joints.npy', 'wb') as f:
             np.save(f, self.joints_seq)
 
+    def save_end_positions(self):
+        end_positions_seq = np.stack(self.end_positions_seq)
+        with open(self.id_dir + '/end_positions.npy', 'wb') as f:
+            np.save(f, self.end_positions_seq)
+
     def save_img(self, img, step):
         plt.imsave(self.id_dir + '/' + str(step) + '.png', img)
 
-    def record_step(self, img, joints, step):
+    def record_step(self, img, joints, end_position, step):
         self.save_img(img, step)
         self.joints_seq.append(np.array(joints, copy=True))
+        self.end_positions_seq.append(np.array(end_position, copy=True))
 
     def record_goal(self, object_id):
         with open(self.data_dir + '/instructions.txt', 'a') as f:
             f.write(f'{self.data_id} {object_id}\n')
 
-    def record_object_positions(self, object_position_list):
+    def record_object_positions(self, object_list):
         with open(self.data_dir + '/object_lists.txt', 'a') as f:
-            for i in range(len(object_position_list)):
+            f.write(f'{self.data_id}, ')
+            for i in range(len(object_list)):
                 position_x = object_list[i][0]
                 position_y = object_list[i][1]
                 radius = object_list[i][2]
-                f.write(f'{self.data_id} {position_x} {position_y} {radius}\n')
+                f.write(f'{position_x}, {position_y}, {radius}, ')
+            f.write(f'\n')
 
 
 # https://stackoverflow.com/questions/46996866/sampling-uniformly-within-the-unit-circle
@@ -137,12 +146,13 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disabl
     # Start acting and recording
     recorder = Recorder(data_dir, data_id)
     recorder.record_goal(object_id)
+    recorder.record_object_positions(object_list)
     joints = env.reset(np.random.random((2,)) * np.pi * 2)
     img = env.render(mode="rgb_array")
     step = 0
 
     # Record initial joints and image
-    recorder.record_step(img, joints, step)
+    recorder.record_step(img, joints, robot.get_end_position(), step)
 
     while l2(robot.get_end_position(), (target_x, target_y)) > error_limit * error_limit:
 
@@ -158,9 +168,10 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disabl
         step += 1
 
         # Record joints and image
-        recorder.record_step(img, joints, step)
+        recorder.record_step(img, joints, robot.get_end_position(), step)
 
     recorder.save_joints()
+    recorder.save_end_positions()
     print(data_id, step)
 
     env.close()
@@ -170,10 +181,10 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disabl
 if __name__ == '__main__':
     screen_width = 128
     screen_height = 128
-    data_dir = './data/'
+    data_dir = './data_position_part2/'
 
     if not os.path.isdir(data_dir):
         os.mkdir(data_dir)
-    for i in range(978, 1000):
+    for i in range(1500, 2000):
         data_id = i
         collect_sequence_data(data_id, screen_width, screen_height, data_dir)
