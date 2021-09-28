@@ -1,6 +1,6 @@
 from collect_data import l2
 from envs import reach
-from models.backbone_joint_head import Backbone
+from models.backbone_cat import Backbone
 import numpy as np
 import torch
 
@@ -34,7 +34,7 @@ def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False):
 
     if use_delta:
         current_joint_angles = current_joint_angles.to('cpu').numpy()
-        action = action * 0.05739997122 + 0.002383889
+        action = action / 100
         action = current_joint_angles + action
 
     # Convert from sin-cos space to rad space
@@ -69,7 +69,7 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         img = img.to('cuda')
         joints = joints.to('cuda')
         task_id = task_id.to('cuda')
-        action, _ = model(img, joints, task_id)
+        action, _, _, _, _ = model(img, joints, task_id)
         action = action.to('cpu')
 
         # Execute action
@@ -108,7 +108,7 @@ def main(model_path, use_delta):
     target_y = object_geom_list.get_objects()[goal][1]
 
     # load model
-    model = Backbone(128, 2, 3, 128, device=torch.device('cuda')).to(torch.device('cuda'))
+    model = Backbone(128, 2, 3, 128).to(torch.device('cuda'))
     model.load_state_dict(torch.load(model_path))
 
     # Execution loop
@@ -119,6 +119,6 @@ def main(model_path, use_delta):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train5-3-traces-aux-loss-joint-angle-delta-action-normalize/1.pth'
+    model_path = '/share/yzhou298/train8-5-cat-2000-multiple-epoch-end-as-next/2.pth'
     use_delta = True
     main(model_path, use_delta)

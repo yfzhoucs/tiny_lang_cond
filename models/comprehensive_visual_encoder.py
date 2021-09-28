@@ -9,17 +9,17 @@ class ComprehensiveVisualEncoder(nn.Module):
 
         self.joints_predictor = nn.Sequential(
             nn.Linear(embedding_size, 32), 
-            nn.ReLU(), 
+            nn.SELU(), 
             nn.Linear(32, num_joints * 2))
 
         self.end_position_predictor = nn.Sequential(
             nn.Linear(embedding_size, 32), 
-            nn.ReLU(), 
+            nn.SELU(), 
             nn.Linear(32, 2))
 
         self.object_detector = nn.Sequential(
             nn.Linear(embedding_size, 64), 
-            nn.ReLU(), 
+            nn.SELU(), 
             nn.Linear(64, 6))
 
     def forward(self, img):

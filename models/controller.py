@@ -10,7 +10,7 @@ class Controller(nn.Module):
         self.layer2 = nn.Linear(16 * 16, num_joints)
 
     def forward(self, x):
-        x = F.relu(self.layer1(x))
+        x = F.selu(self.layer1(x))
         x = self.layer2(x)
         return x
 

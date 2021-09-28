@@ -13,9 +13,9 @@ class JointEncoder(nn.Module):
 
     def forward(self, joints):
         x = self.flatten(joints)
-        x = F.relu(self.layer1(x))
-        x = F.relu(self.layer2(x))
-        x = F.relu(self.layer3(x))
+        x = F.selu(self.layer1(x))
+        x = F.selu(self.layer2(x))
+        x = F.selu(self.layer3(x))
         return x
 
 

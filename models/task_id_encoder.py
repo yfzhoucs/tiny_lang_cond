@@ -12,8 +12,8 @@ class TaskIDEncoder(nn.Module):
 
     def forward(self, task_id):
         x = self.id_to_embedding(task_id)
-        x = F.relu(self.layer1(x))
-        x = F.relu(self.layer2(x))
+        x = F.selu(self.layer1(x))
+        x = F.selu(self.layer2(x))
         return x
 
 
