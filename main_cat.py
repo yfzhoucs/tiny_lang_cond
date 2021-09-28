@@ -15,35 +15,69 @@ else:
 
 
 def train(writer, name, epoch_idx, data_loader, model, 
-    optimizer, criterion, ckpt_path, save_ckpt):
-    for idx, (img, joints, task_id, end_position, object_list, target_position, next_joints) in enumerate(data_loader):
-        # Prepare data
-        img = img.to(device)
-        joints = joints.to(device)
-        task_id = task_id.to(device)
-        end_position = end_position.to(device)
-        object_list = object_list.to(device)
-        target_position = target_position.to(device)
-        next_joints = next_joints.to(device)
+    optimizer, criterion, ckpt_path, save_ckpt, add_displacement):
 
-        # Forward pass
-        optimizer.zero_grad()
-        action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred = model(img, joints, task_id)
-        loss1 = criterion(action_pred, next_joints)
-        loss2 = criterion(joints_pred, joints)
-        loss3 = criterion(end_position_pred, end_position)
-        loss4 = criterion(object_list_pred, object_list)
-        loss5 = criterion(target_position_pred, target_position)
-        loss = loss1 + loss2 + loss3 + loss4 + loss5
-        
-        # Backward pass
-        loss.backward()
-        optimizer.step()
+    if not add_displacement:
+        for idx, (img, joints, task_id, end_position, object_list, target_position, next_joints) in enumerate(data_loader):
+            # Prepare data
+            img = img.to(device)
+            joints = joints.to(device)
+            task_id = task_id.to(device)
+            end_position = end_position.to(device)
+            object_list = object_list.to(device)
+            target_position = target_position.to(device)
+            next_joints = next_joints.to(device)
 
-        # Log and print
-        writer.add_scalar('train loss', loss, global_step=epoch_idx * len(data_loader) + idx)
-        print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss2 {loss2.item():.2f}, loss3 {loss3.item():.2f}, loss4 {loss4.item():.2f}, loss5 {loss5.item():.2f}')
+            # Forward pass
+            optimizer.zero_grad()
+            action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred = model(img, joints, task_id)
+            loss1 = criterion(action_pred, next_joints)
+            loss2 = criterion(joints_pred, joints)
+            loss3 = criterion(end_position_pred, end_position)
+            loss4 = criterion(object_list_pred, object_list)
+            loss5 = criterion(target_position_pred, target_position)
+            loss = loss1 + loss2 + loss3 + loss4 + loss5
+            
+            # Backward pass
+            loss.backward()
+            optimizer.step()
+
+            # Log and print
+            writer.add_scalar('train loss', loss, global_step=epoch_idx * len(data_loader) + idx)
+            print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss2 {loss2.item():.2f}, loss3 {loss3.item():.2f}, loss4 {loss4.item():.2f}, loss5 {loss5.item():.2f}')
     
+    else:
+        for idx, (img, joints, task_id, end_position, object_list, target_position, next_joints, displacement) in enumerate(data_loader):
+            # Prepare data
+            img = img.to(device)
+            joints = joints.to(device)
+            task_id = task_id.to(device)
+            end_position = end_position.to(device)
+            object_list = object_list.to(device)
+            target_position = target_position.to(device)
+            next_joints = next_joints.to(device)
+            displacement = displacement.to(device)
+
+            # Forward pass
+            optimizer.zero_grad()
+            action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred, displacement_pred = model(img, joints, task_id)
+            loss1 = criterion(action_pred, next_joints)
+            loss2 = criterion(joints_pred, joints)
+            loss3 = criterion(end_position_pred, end_position)
+            loss4 = criterion(object_list_pred, object_list)
+            loss5 = criterion(target_position_pred, target_position)
+            loss6 = criterion(displacement_pred, displacement)
+            loss = loss1 + loss2 + loss3 + loss4 + loss5 + loss6
+            
+            # Backward pass
+            loss.backward()
+            optimizer.step()
+
+            # Log and print
+            writer.add_scalar('train loss', loss, global_step=epoch_idx * len(data_loader) + idx)
+            print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss2 {loss2.item():.2f}, loss3 {loss3.item():.2f}, loss4 {loss4.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}')
+            print(displacement.detach().cpu().numpy()[0], displacement_pred.detach().cpu().numpy()[0])
+
     # Save checkpoint
     if save_ckpt:
         if not os.path.isdir(os.path.join(ckpt_path, name)):
@@ -54,31 +88,34 @@ def train(writer, name, epoch_idx, data_loader, model,
 def main(writer, name, batch_size=50):
     ckpt_path = r'/share/yzhou298'
     save_ckpt = True
+    add_displacement = True
+
     # load data
     dataset = ComprehensiveRobotDataset(
         data_dir='./data_position_2000/', 
         use_trigonometric_representation=True, 
         use_delta=True,
         normalize=False,
-        ending_angles_as_next=True,
-        amplify_trigonometric=True)
+        ending_angles_as_next=False,
+        amplify_trigonometric=True,
+        add_displacement=add_displacement)
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                           shuffle=True, num_workers=2)
     # load model
-    model = Backbone(128, 2, 3, 128)
+    model = Backbone(128, 2, 3, 128, add_displacement=add_displacement)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters())
     criterion = nn.MSELoss()
 
     # train n epoches
-    for i in range(3):
+    for i in range(10):
         train(writer, name, i, data_loader, model, optimizer, 
-            criterion, ckpt_path, save_ckpt)
+            criterion, ckpt_path, save_ckpt, add_displacement)
 
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train8-5-cat-2000-multiple-epoch-end-as-next'
+    name = 'train8-8-cat-2000-10-epoch-displacement'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

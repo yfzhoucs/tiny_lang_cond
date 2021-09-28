@@ -8,8 +8,11 @@ from models.controller import Controller
 
 
 class Backbone(nn.Module):
-	def __init__(self, img_size, num_joints, num_tasks, embedding_size):
+	def __init__(self, img_size, num_joints, num_tasks, embedding_size, add_displacement=False):
 		super(Backbone, self).__init__()
+
+		self.add_displacement = add_displacement
+
 		self.visual_encoder = ComprehensiveVisualEncoder(img_size, num_joints, embedding_size)
 		self.joint_encoder = JointEncoder(num_joints * 2, embedding_size)
 		self.task_id_encoder = TaskIDEncoder(num_tasks, embedding_size)
@@ -23,6 +26,11 @@ class Backbone(nn.Module):
             nn.Linear(embedding_size, 64), 
             nn.SELU(), 
             nn.Linear(64, 2))
+		if add_displacement:
+			self.embed_to_displacement = nn.Sequential(
+            nn.Linear(embedding_size, 64), 
+            nn.SELU(), 
+            nn.Linear(64, 2))
 
 	def forward(self, img, joints, target_id):
 		img_embedding, joints_pred, end_position_pred, object_list_pred = self.visual_encoder(img)
@@ -31,6 +39,9 @@ class Backbone(nn.Module):
 		state_embedding = self.fusion(torch.cat((img_embedding, joint_embedding, task_embedding), dim=1))
 		target_position_pred = self.embed_to_target_position(state_embedding)
 		action_pred = self.controller(state_embedding)
+		if self.add_displacement:
+			displacement_pred = self.embed_to_displacement(state_embedding)
+			return action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred, displacement_pred
 		return action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred
 
 # import torch

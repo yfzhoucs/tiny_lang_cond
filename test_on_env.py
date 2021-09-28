@@ -40,14 +40,16 @@ def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False):
     # Convert from sin-cos space to rad space
     action_rad = np.array([0., 0.])
     for i in range(2):
-        if action[0][i * 2 + 1] < -1:
-            action[0][i * 2 + 1] = -1
-        if action[0][i * 2 + 1] > 1:
-            action[0][i * 2 + 1] = 1
-        action_rad[i] = np.arccos(action[0][i * 2 + 1])
-        if action[0][i * 2] < 0:
-            action_rad[i] += 2 * (np.pi - action_rad[i])
-    print(action, action_rad)
+        # if action[0][i * 2 + 1] < -1:
+        #     action[0][i * 2 + 1] = -1
+        # if action[0][i * 2 + 1] > 1:
+        #     action[0][i * 2 + 1] = 1
+        action_rad[i] = np.arctan(action[0][i * 2] / action[0][i * 2 + 1])
+        if action[0][i * 2 + 1] < 0:
+            action_rad[i] += np.pi
+        if action_rad[i] < 0:
+            action_rad[i] += np.pi * 2
+    print('rad', action, action_rad)
 
     return action_rad
 
@@ -62,14 +64,14 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
 
     # Start looping
     step = 0
-    while squared_error > error_limit * error_limit:
+    while step < 300:
 
         # Predict action from the model
         joints, img = convert_obversations_to_torch(joints, img)
         img = img.to('cuda')
         joints = joints.to('cuda')
         task_id = task_id.to('cuda')
-        action, _, _, _, _ = model(img, joints, task_id)
+        action, _, _, _, _, displacement_pred = model(img, joints, task_id)
         action = action.to('cpu')
 
         # Execute action
@@ -81,10 +83,14 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         squared_error = l2(robot.get_end_position(), (target_x, target_y))
 
         step += 1
+        print(f'displacement_pred {displacement_pred.detach().cpu().numpy()[0]}')
         print('error', step, np.sqrt(squared_error))
         # input()
-    print('done')
-    input()
+
+        if squared_error < error_limit * error_limit:
+            print('done')
+            return 1
+    return 0
 
 
 def main(model_path, use_delta):
@@ -103,22 +109,29 @@ def main(model_path, use_delta):
         screen_width=screen_width, screen_height=screen_height)
 
     # Create goal to reach
-    goal = int(input('please input goal to reach'))
+    goal = np.random.randint(3)
     target_x = object_geom_list.get_objects()[goal][0]
     target_y = object_geom_list.get_objects()[goal][1]
 
     # load model
-    model = Backbone(128, 2, 3, 128).to(torch.device('cuda'))
+    model = Backbone(128, 2, 3, 128, add_displacement=True).to(torch.device('cuda'))
     model.load_state_dict(torch.load(model_path))
 
     # Execution loop
-    execution_loop(model, env, robot, goal, target_x, target_y, use_delta)
+    success = execution_loop(model, env, robot, goal, target_x, target_y, use_delta)
 
     # Close the environment
     env.close()
 
+    return success
+
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train8-5-cat-2000-multiple-epoch-end-as-next/2.pth'
+    model_path = '/share/yzhou298/train8-8-cat-2000-10-epoch-displacement/9.pth'
     use_delta = True
-    main(model_path, use_delta)
+    trials = 100
+    success = 0
+    for i in range(trials):
+        success += main(model_path, use_delta)
+    success_rate = success / trials
+    print(success_rate)

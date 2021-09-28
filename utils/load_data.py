@@ -344,7 +344,10 @@ class ComprehensiveRobotDataset(Dataset):
         object_list_txt='object_lists.txt',
         use_trigonometric_representation=False, 
         use_delta=False, normalize=False,
-        ending_angles_as_next=False, amplify_trigonometric=False):
+        ending_angles_as_next=False, amplify_trigonometric=False,
+        add_displacement=False):
+
+        self.add_displacement = add_displacement
 
         # Collect all object lists
         object_lists_by_trace_id = {}
@@ -420,6 +423,8 @@ class ComprehensiveRobotDataset(Dataset):
         self.end_positions = np.concatenate(self.end_positions)
         self.object_lists = np.array(self.object_lists)
         self.target_positions = np.array(self.target_positions)
+        if add_displacement:
+            self.displacement = self.target_positions - self.end_positions
 
         # If use trigonometric, which means to use sin(theta) and cos(theta) to discribe theta. 
         # This adds smoothness to the outputs.
@@ -476,6 +481,9 @@ class ComprehensiveRobotDataset(Dataset):
         object_list = torch.tensor(self.object_lists[index], dtype=torch.float32)
         target_position = torch.tensor(self.target_positions[index], dtype=torch.float32)
         next_joints = torch.tensor(self.next_joints[index], dtype=torch.float32)
+        if self.add_displacement:
+            displacement = torch.tensor(self.displacement[index], dtype=torch.float32)
+            return img, joints, task_id, end_position, object_list, target_position, next_joints, displacement
         return img, joints, task_id, end_position, object_list, target_position, next_joints
 
 
