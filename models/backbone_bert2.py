@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-# from models.comprehensive_visual_encoder import ComprehensiveVisualEncoder
 from models.img_encoder_square import ImgEncoder
 from models.joint_encoder import JointEncoder
 from models.task_id_encoder import TaskIDEncoder
@@ -102,18 +101,24 @@ class Backbone(nn.Module):
         #     nn.Linear(embedding_size, embedding_size), 
         #     nn.SELU())
         
-        self.attn = MultiheadAttention(input_dim=embedding_size, embed_dim=embedding_size, num_heads=16)
+        self.attn = MultiheadAttention(input_dim=embedding_size, embed_dim=embedding_size, num_heads=8)
 
         # self.joint_encoder = JointEncoder(num_joints * 2, embedding_size)
         self.task_id_encoder = TaskIDEncoder(num_tasks, embedding_size)
+        self.displacement_query = nn.Parameter(torch.rand(embedding_size))
+        self.task_id_displacement_merger = nn.Sequential(
+            nn.Linear(embedding_size * 2, embedding_size),
+            nn.ReLU())
+        self.action_query = nn.Parameter(torch.rand(embedding_size))
+        self.task_id_action_merger = nn.Sequential(
+            nn.Linear(embedding_size * 2, embedding_size),
+            nn.ReLU())
 
         self.controller = Controller(embedding_size, num_joints * 2)
         self.embed_to_target_position = nn.Sequential(
             nn.Linear(embedding_size, 128), 
             nn.SELU(), 
-            nn.Linear(128, 64), 
-            nn.SELU(), 
-            nn.Linear(64, 2))
+            nn.Linear(128, 2))
         if add_displacement:
             self.embed_to_displacement = nn.Sequential(
             nn.Linear(embedding_size, 64), 
@@ -128,21 +133,15 @@ class Backbone(nn.Module):
         self.joints_predictor = nn.Sequential(
             nn.Linear(embedding_size, 64), 
             nn.SELU(), 
-            nn.Linear(64, 32), 
-            nn.SELU(), 
-            nn.Linear(32, num_joints * 2))
+            nn.Linear(64, num_joints * 2))
 
         self.end_position_predictor = nn.Sequential(
             nn.Linear(embedding_size, 64), 
             nn.SELU(), 
-            nn.Linear(64, 32), 
-            nn.SELU(), 
-            nn.Linear(32, 2))
+            nn.Linear(64, 2))
 
         self.object_detector = nn.Sequential(
-            nn.Linear(embedding_size, 128), 
-            nn.SELU(), 
-            nn.Linear(128, 64), 
+            nn.Linear(embedding_size, 64), 
             nn.SELU(), 
             nn.Linear(64, 6))
 
@@ -169,18 +168,28 @@ class Backbone(nn.Module):
         end_position_pred = self.end_position_predictor(img_embedding_converted)
         object_list_pred = self.object_detector(img_embedding_converted)
 
-        # Prepare task id for attention
-        task_embedding = self.task_id_encoder(target_id)
+        # Prepare task id as a query
+        task_embedding = self.task_id_encoder(target_id).unsqueeze(1)
+        # Preparing action query
+        action_query = self.action_query.unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1)
+        action_query = torch.cat((task_embedding, action_query), dim=2)
+        action_query = self.task_id_action_merger(action_query)
+        # Preparing displacement query
+        displacement_query = self.displacement_query.unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1)
+        displacement_query = torch.cat((task_embedding, displacement_query), dim=2)
+        displacement_query = self.task_id_displacement_merger(displacement_query)
+        # Concatenate the queries
+        query = torch.cat((task_embedding, action_query, displacement_query), dim=1)
 
         # Attention itself. prepro is just a linear layer
         img_embedding = self.img_embed_prepro(img_embedding)
-        state_embedding, attn_map = self.attn(task_embedding.unsqueeze(1), img_embedding, img_embedding, return_attention=True)
-        state_embedding = state_embedding.squeeze(1)
+        state_embedding, attn_map = self.attn(query, img_embedding, img_embedding, return_attention=True)
+        # state_embedding = state_embedding.squeeze(1)
 
         # Post-attn operations. Predict the results from the state embedding
-        target_position_pred = self.embed_to_target_position(state_embedding)
-        action_pred = self.controller(state_embedding)
+        target_position_pred = self.embed_to_target_position(state_embedding[:,0,:])
+        action_pred = self.controller(state_embedding[:,1,:])
         if self.add_displacement:
-            displacement_pred = self.embed_to_displacement(state_embedding)
+            displacement_pred = self.embed_to_displacement(state_embedding[:, 2, :])
             return action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred, displacement_pred, attn_map
         return action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred, attn_map
