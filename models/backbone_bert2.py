@@ -183,7 +183,10 @@ class Backbone(nn.Module):
 
         # Attention itself. prepro is just a linear layer
         img_embedding = self.img_embed_prepro(img_embedding)
-        state_embedding, attn_map = self.attn(query, img_embedding, img_embedding, return_attention=True)
+
+        # Prepare the Cortex
+        cortex = torch.cat((query, img_embedding), dim=1)
+        state_embedding, attn_map = self.attn(cortex, cortex, cortex, return_attention=True)
         # state_embedding = state_embedding.squeeze(1)
 
         # Post-attn operations. Predict the results from the state embedding

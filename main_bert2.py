@@ -64,9 +64,12 @@ def train(writer, name, epoch_idx, data_loader, model,
             optimizer.zero_grad()
             action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred, displacement_pred, attn_map = model(img, joints, task_id)
             loss1 = criterion(action_pred, next_joints)
-            loss2 = criterion(joints_pred, joints)
-            loss3 = criterion(end_position_pred, end_position)
-            loss4 = criterion(object_list_pred, object_list)
+            # loss2 = criterion(joints_pred, joints)
+            # loss3 = criterion(end_position_pred, end_position)
+            # loss4 = criterion(object_list_pred, object_list)
+            loss2 = torch.tensor([0]).to(device)
+            loss3 = torch.tensor([0]).to(device)
+            loss4 = torch.tensor([0]).to(device)
             loss5 = criterion(target_position_pred, target_position)
             loss6 = criterion(displacement_pred, displacement)
             loss = loss1 + loss2 + loss3 + loss4 + loss5 + loss6
@@ -104,7 +107,7 @@ def train(writer, name, epoch_idx, data_loader, model,
         torch.save(model.state_dict(), os.path.join(ckpt_path, name, f'{epoch_idx}.pth'))
 
 
-def main(writer, name, batch_size=128):
+def main(writer, name, batch_size=32):
     ckpt_path = r'/share/yzhou298'
     save_ckpt = False
     add_displacement = True
@@ -134,7 +137,7 @@ def main(writer, name, batch_size=128):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train9-7-attn2-2000-10-epoch-full-loss-std-model-size-bs128'
+    name = 'train9-7-attn2-cortex-2000-10-epoch-attn-loss-std-model-size-bs32'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)
