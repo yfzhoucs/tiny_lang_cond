@@ -1,11 +1,13 @@
 import numpy as np
-from models.backbone_cat import Backbone
+from models.backbone_detr import Backbone
 from utils.load_data import ComprehensiveRobotDataset
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
 import torch
 import os
+import matplotlib.pyplot as plt
+import time
 
 
 if torch.cuda.is_available():
@@ -30,7 +32,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
             # Forward pass
             optimizer.zero_grad()
-            action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred = model(img, joints, task_id)
+            action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred, attn_map = model(img, joints, task_id)
             loss1 = criterion(action_pred, next_joints)
             loss2 = criterion(joints_pred, joints)
             loss3 = criterion(end_position_pred, end_position)
@@ -60,7 +62,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
             # Forward pass
             optimizer.zero_grad()
-            action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred, displacement_pred = model(img, joints, task_id)
+            action_pred, joints_pred, end_position_pred, object_list_pred, target_position_pred, displacement_pred, attn_map = model(img, joints, task_id)
             loss1 = criterion(action_pred, next_joints)
             loss2 = criterion(joints_pred, joints)
             loss3 = criterion(end_position_pred, end_position)
@@ -68,7 +70,7 @@ def train(writer, name, epoch_idx, data_loader, model,
             loss5 = criterion(target_position_pred, target_position)
             loss6 = criterion(displacement_pred, displacement)
             loss = loss1 + loss2 + loss3 + loss4 + loss5 + loss6
-            # loss = loss1 + loss5 + loss6
+            # loss = loss1 + loss5
             
             # Backward pass
             loss.backward()
@@ -76,9 +78,24 @@ def train(writer, name, epoch_idx, data_loader, model,
 
             # Log and print
             writer.add_scalar('train loss', loss, global_step=epoch_idx * len(data_loader) + idx)
-            # print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}')
             print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss2 {loss2.item():.2f}, loss3 {loss3.item():.2f}, loss4 {loss4.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}')
+            # print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}')
             # print(displacement.detach().cpu().numpy()[0], displacement_pred.detach().cpu().numpy()[0])
+            print(task_id.detach().cpu().numpy()[0], target_position.detach().cpu().numpy()[0])
+            # if epoch_idx * len(data_loader) + idx > 100:
+            #     fig = plt.figure(figsize=(10, 5))
+            #     attn_map = attn_map.sum(axis=1)
+            #     attn_map = attn_map.detach().cpu().numpy()[0].reshape((32, 32))
+            #     fig.add_subplot(1, 2, 1)
+            #     plt.imshow(attn_map, cmap='Greys')
+            #     plt.colorbar()
+            #     fig.add_subplot(1, 2, 2)
+            #     plt.imshow(img.detach().cpu().numpy()[0])
+            #     plt.title(str(task_id.detach().cpu().numpy()[0]))
+            #     plt.show()
+
+                # plt.close()
+                # plt.cla()
 
     # Save checkpoint
     if save_ckpt:
@@ -87,9 +104,9 @@ def train(writer, name, epoch_idx, data_loader, model,
         torch.save(model.state_dict(), os.path.join(ckpt_path, name, f'{epoch_idx}.pth'))
 
 
-def main(writer, name, batch_size=50):
+def main(writer, name, batch_size=192):
     ckpt_path = r'/share/yzhou298'
-    save_ckpt = False
+    save_ckpt = True
     add_displacement = True
 
     # load data
@@ -117,7 +134,7 @@ def main(writer, name, batch_size=50):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train9-3-cat-2000-10-epoch-displacement-not-remove-losses'
+    name = 'train9-5-detr-2000-10-epoch-displacement-full-loss-attn2'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

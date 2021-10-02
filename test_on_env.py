@@ -1,6 +1,6 @@
 from collect_data import l2
 from envs import reach
-from models.backbone_cat import Backbone
+from models.backbone_detr import Backbone
 import numpy as np
 import torch
 
@@ -71,7 +71,7 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         img = img.to('cuda')
         joints = joints.to('cuda')
         task_id = task_id.to('cuda')
-        action, _, _, _, _, displacement_pred = model(img, joints, task_id)
+        action, _, _, _, _, displacement_pred, _ = model(img, joints, task_id)
         action = action.to('cpu')
 
         # Execute action
@@ -93,7 +93,7 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
     return 0
 
 
-def main(model_path, use_delta):
+def main(model_path, use_delta, input_goal=False):
     # Create an environment
     screen_width = 128
     screen_height = 128
@@ -109,12 +109,15 @@ def main(model_path, use_delta):
         screen_width=screen_width, screen_height=screen_height)
 
     # Create goal to reach
-    goal = np.random.randint(3)
+    if not input_goal:
+        goal = np.random.randint(3)
+    else:
+        goal = int(input('please input goal (rgb=012): '))
     target_x = object_geom_list.get_objects()[goal][0]
     target_y = object_geom_list.get_objects()[goal][1]
 
     # load model
-    model = Backbone(128, 2, 3, 128, add_displacement=True).to(torch.device('cuda'))
+    model = Backbone(128, 2, 3, 128, add_displacement=True, device=torch.device('cuda')).to(torch.device('cuda'))
     model.load_state_dict(torch.load(model_path))
 
     # Execution loop
@@ -127,11 +130,11 @@ def main(model_path, use_delta):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train8-8-cat-2000-10-epoch-displacement/9.pth'
+    model_path = '/share/yzhou298/train9-5-detr-2000-10-epoch-displacement-full-loss-attn2/8.pth'
     use_delta = True
     trials = 100
     success = 0
     for i in range(trials):
-        success += main(model_path, use_delta)
+        success += main(model_path, use_delta, input_goal=False)
     success_rate = success / trials
     print(success_rate)
