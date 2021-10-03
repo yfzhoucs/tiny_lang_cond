@@ -1,8 +1,15 @@
 from collect_data import l2
 from envs import reach
-from models.backbone_detr import Backbone
+from models.backbone_detr2 import Backbone
 import numpy as np
 import torch
+
+
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
+# device = torch.device('cpu')
 
 
 # https://stackoverflow.com/questions/46996866/sampling-uniformly-within-the-unit-circle
@@ -68,10 +75,11 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
 
         # Predict action from the model
         joints, img = convert_obversations_to_torch(joints, img)
-        img = img.to('cuda')
-        joints = joints.to('cuda')
-        task_id = task_id.to('cuda')
-        action, _, _, _, _, displacement_pred, _ = model(img, joints, task_id)
+        img = img.to(device)
+        joints = joints.to(device)
+        task_id = task_id.to(device)
+        _, _, _, displacement_embed, _ = model(img, joints, task_id)
+        action, _, displacement_pred, _, _ = model(img, joints, task_id, displacement_embed)
         action = action.to('cpu')
 
         # Execute action
@@ -117,7 +125,7 @@ def main(model_path, use_delta, input_goal=False):
     target_y = object_geom_list.get_objects()[goal][1]
 
     # load model
-    model = Backbone(128, 2, 3, 128, add_displacement=True, device=torch.device('cuda')).to(torch.device('cuda'))
+    model = Backbone(128, 2, 3, 128, add_displacement=True, device=device).to(device)
     model.load_state_dict(torch.load(model_path))
 
     # Execution loop
@@ -130,7 +138,7 @@ def main(model_path, use_delta, input_goal=False):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train9-5-detr-2000-10-epoch-displacement-full-loss-attn2/8.pth'
+    model_path = '/share/yzhou298/train9-8-attn2-detr2-pos-id-displacement-embed-as-input3-not-end-as-next/7.pth'
     use_delta = True
     trials = 100
     success = 0
