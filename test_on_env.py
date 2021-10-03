@@ -1,6 +1,6 @@
 from collect_data import l2
 from envs import reach
-from models.backbone_detr2 import Backbone
+from models.backbone_small_image import Backbone
 import numpy as np
 import torch
 
@@ -56,7 +56,7 @@ def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False):
             action_rad[i] += np.pi
         if action_rad[i] < 0:
             action_rad[i] += np.pi * 2
-    print('rad', action, action_rad)
+    # print('rad', action, action_rad)
 
     return action_rad
 
@@ -137,11 +137,12 @@ def main(model_path, use_delta, input_goal=False):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train9-8-attn2-detr2-adding-joint/8.pth'
+    model_path = '/share/yzhou298/train9-9-detr2-small-image/4.pth'
     use_delta = True
     trials = 100
     success = 0
     for i in range(trials):
         success += main(model_path, use_delta, input_goal=False)
+        print(i + 1, success)
     success_rate = success / trials
     print(success_rate)
