@@ -124,7 +124,7 @@ def main(writer, name, batch_size=32):
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                           shuffle=True, num_workers=2)
     # load model
-    model = Backbone(128, 2, 3, 128, add_displacement=add_displacement)
+    model = Backbone(128, 2, 3, 128, add_displacement=add_displacement, ngf=32)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters())
     criterion = nn.MSELoss()
@@ -137,7 +137,7 @@ def main(writer, name, batch_size=32):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train9-7-attn2-cortex-2000-10-epoch-attn-loss-std-model-size-bs32'
+    name = 'train9-9-attn2-cortex-2000-10-epoch-attn-loss-std-model-size-bs32'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

@@ -103,7 +103,7 @@ class Backbone(nn.Module):
         
         self.attn = MultiheadAttention(input_dim=embedding_size, embed_dim=embedding_size, num_heads=8)
 
-        # self.joint_encoder = JointEncoder(num_joints * 2, embedding_size)
+        self.joint_encoder = JointEncoder(num_joints * 2, embedding_size)
         self.task_id_encoder = TaskIDEncoder(num_tasks, embedding_size)
         self.displacement_query = nn.Parameter(torch.rand(embedding_size))
         self.task_id_displacement_merger = nn.Sequential(
@@ -170,6 +170,7 @@ class Backbone(nn.Module):
 
         # Prepare task id as a query
         task_embedding = self.task_id_encoder(target_id).unsqueeze(1)
+        joint_embedding = self.joint_encoder(joints).unsqueeze(1)
         # Preparing action query
         action_query = self.action_query.unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1)
         action_query = torch.cat((task_embedding, action_query), dim=2)
@@ -179,7 +180,7 @@ class Backbone(nn.Module):
         displacement_query = torch.cat((task_embedding, displacement_query), dim=2)
         displacement_query = self.task_id_displacement_merger(displacement_query)
         # Concatenate the queries
-        query = torch.cat((task_embedding, action_query, displacement_query), dim=1)
+        query = torch.cat((task_embedding, action_query, displacement_query, joint_embedding), dim=1)
 
         # Attention itself. prepro is just a linear layer
         img_embedding = self.img_embed_prepro(img_embedding)
@@ -187,6 +188,7 @@ class Backbone(nn.Module):
         # Prepare the Cortex
         cortex = torch.cat((query, img_embedding), dim=1)
         state_embedding, attn_map = self.attn(cortex, cortex, cortex, return_attention=True)
+        # state_embedding, attn_map = self.attn(state_embedding, state_embedding, state_embedding, return_attention=True)
         # state_embedding = state_embedding.squeeze(1)
 
         # Post-attn operations. Predict the results from the state embedding

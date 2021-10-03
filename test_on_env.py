@@ -78,8 +78,7 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         img = img.to(device)
         joints = joints.to(device)
         task_id = task_id.to(device)
-        _, _, _, displacement_embed, _ = model(img, joints, task_id)
-        action, _, displacement_pred, _, _ = model(img, joints, task_id, displacement_embed)
+        action, _, displacement_pred, _, _ = model(img, joints, task_id)
         action = action.to('cpu')
 
         # Execute action
@@ -138,7 +137,7 @@ def main(model_path, use_delta, input_goal=False):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train9-8-attn2-detr2-pos-id-displacement-embed-as-input3-not-end-as-next/7.pth'
+    model_path = '/share/yzhou298/train9-8-attn2-detr2-adding-joint/8.pth'
     use_delta = True
     trials = 100
     success = 0

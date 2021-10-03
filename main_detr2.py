@@ -59,11 +59,15 @@ def train(writer, name, epoch_idx, data_loader, model,
 
             # Forward pass
             optimizer.zero_grad()
+            # action_pred, target_position_pred, displacement_pred, displacement_embed, attn_map = model(img, joints, task_id)
+            # action_pred2, target_position_pred2, displacement_pred2, displacement_embed2, attn_map2 = model(img, joints, task_id, displacement_embed)
+            # loss1 = (criterion(action_pred, next_joints) + criterion(action_pred2, next_joints)) / 2
+            # loss5 = (criterion(target_position_pred, target_position) + criterion(target_position_pred2, target_position)) / 2
+            # loss6 = (criterion(displacement_pred, displacement) + criterion(displacement_pred2, displacement)) / 2
             action_pred, target_position_pred, displacement_pred, displacement_embed, attn_map = model(img, joints, task_id)
-            action_pred2, target_position_pred2, displacement_pred2, displacement_embed2, attn_map2 = model(img, joints, task_id, displacement_embed)
-            loss1 = (criterion(action_pred, next_joints) + criterion(action_pred2, next_joints)) / 2
-            loss5 = (criterion(target_position_pred, target_position) + criterion(target_position_pred2, target_position)) / 2
-            loss6 = (criterion(displacement_pred, displacement) + criterion(displacement_pred2, displacement)) / 2
+            loss1 = criterion(action_pred, next_joints)
+            loss5 = criterion(target_position_pred, target_position)
+            loss6 = criterion(displacement_pred, displacement)
             loss = loss1 + loss5 + loss6
             # loss = loss1 + loss5
             
@@ -110,7 +114,7 @@ def main(writer, name, batch_size=128):
         use_trigonometric_representation=True, 
         use_delta=True,
         normalize=False,
-        ending_angles_as_next=False,
+        ending_angles_as_next=True,
         amplify_trigonometric=True,
         add_displacement=add_displacement)
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
@@ -129,7 +133,7 @@ def main(writer, name, batch_size=128):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train9-8-attn2-detr2-pos-id-displacement-embed-as-input3-not-end-as-next'
+    name = 'train9-8-attn2-detr2-adding-joint'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)
