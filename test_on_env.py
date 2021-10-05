@@ -137,7 +137,7 @@ def main(model_path, use_delta, input_goal=False):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train9-9-detr2-small-image/4.pth'
+    model_path = '/share/yzhou298/train9-9-detr2-small-image/9.pth'
     use_delta = True
     trials = 100
     success = 0

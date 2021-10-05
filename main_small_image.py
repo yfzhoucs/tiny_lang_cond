@@ -64,20 +64,23 @@ def train(writer, name, epoch_idx, data_loader, model,
             # loss1 = (criterion(action_pred, next_joints) + criterion(action_pred2, next_joints)) / 2
             # loss5 = (criterion(target_position_pred, target_position) + criterion(target_position_pred2, target_position)) / 2
             # loss6 = (criterion(displacement_pred, displacement) + criterion(displacement_pred2, displacement)) / 2
-            action_pred, target_position_pred, displacement_pred, displacement_embed, attn_map = model(img, joints, task_id)
+            action_pred, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id)
             loss1 = criterion(action_pred, next_joints)
             loss5 = criterion(target_position_pred, target_position)
             loss6 = criterion(displacement_pred, displacement)
-            loss = loss1 + loss5 + loss6
+            loss7 = criterion(joints_pred, joints)
+            loss = loss1 + loss5 + loss6 + loss7
             # loss = loss1 + loss5
             
             # Backward pass
             loss.backward()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+            # torch.nn.utils.clip_grad_value_(model.parameters(), 0.5)
             optimizer.step()
 
             # Log and print
             writer.add_scalar('train loss', loss, global_step=epoch_idx * len(data_loader) + idx)
-            print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}')
+            print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}')
             # print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}')
             # print(displacement.detach().cpu().numpy()[0], displacement_pred.detach().cpu().numpy()[0])
             print(task_id.detach().cpu().numpy()[0], target_position.detach().cpu().numpy()[0])
@@ -103,9 +106,9 @@ def train(writer, name, epoch_idx, data_loader, model,
         torch.save(model.state_dict(), os.path.join(ckpt_path, name, f'{epoch_idx}.pth'))
 
 
-def main(writer, name, batch_size=128):
+def main(writer, name, batch_size=192):
     ckpt_path = r'/share/yzhou298'
-    save_ckpt = True
+    save_ckpt = False
     add_displacement = True
 
     # load data
@@ -126,14 +129,14 @@ def main(writer, name, batch_size=128):
     criterion = nn.MSELoss()
 
     # train n epoches
-    for i in range(10):
+    for i in range(30):
         train(writer, name, i, data_loader, model, optimizer, 
             criterion, ckpt_path, save_ckpt, add_displacement)
 
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train9-9-detr2-small-image'
+    name = 'train9-9-detr2-small-image-joint-out'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

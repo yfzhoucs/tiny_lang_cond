@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from models.joint_encoder import JointEncoder
 from models.task_id_encoder import TaskIDEncoder
 from models.cross_attention_bert import CrossAttentionBERT
 from models.controller import Controller
@@ -68,6 +67,24 @@ class ImgEncoder(nn.Module):
         return out
 
 
+class JointEncoder(nn.Module):
+    def __init__(self, num_joints, embedding_size):
+        super(JointEncoder, self).__init__()
+        self.flatten = nn.Flatten()
+        self.layer1 = nn.Linear(num_joints, 2048)
+        self.layer2 = nn.Linear(2048, 512)
+        self.layer3 = nn.Linear(512, 256)
+        self.layer4 = nn.Linear(256, embedding_size)
+
+    def forward(self, joints):
+        x = self.flatten(joints)
+        x = F.selu(self.layer1(x))
+        x = F.selu(self.layer2(x))
+        x = F.selu(self.layer3(x))
+        x = F.selu(self.layer4(x))
+        return x
+
+
 # Based on https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial6/Transformers_and_MHAttention.html
 class MultiheadAttention(nn.Module):
 
@@ -85,6 +102,16 @@ class MultiheadAttention(nn.Module):
         self.k_proj = nn.Linear(input_dim, embed_dim)
         self.v_proj = nn.Linear(input_dim, embed_dim)
         self.o_proj = nn.Linear(embed_dim, embed_dim)
+
+        # self.v_proj_2 = nn.Sequential(
+        #     nn.ReLU(),
+        #     nn.Linear(embed_dim, embed_dim),
+        #     nn.ReLU())
+
+        # self.o_proj_2 = nn.Sequential(
+        #     nn.ReLU(),
+        #     nn.Linear(embed_dim, embed_dim),
+        #     nn.ReLU())
 
         self._reset_parameters()
 
@@ -116,6 +143,7 @@ class MultiheadAttention(nn.Module):
         q = self.q_proj(q)
         k = self.k_proj(k)
         v = self.v_proj(v)
+        # v = self.v_proj_2(v)
 
         q = q.reshape(batch_size, seq_length_q, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
         k = k.reshape(batch_size, seq_length_kv, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
@@ -126,6 +154,7 @@ class MultiheadAttention(nn.Module):
         values = values.permute(0, 2, 1, 3) # [Batch, SeqLen, Head, Dims]
         values = values.reshape(batch_size, seq_length_q, embed_dim)
         o = self.o_proj(values)
+        # o = self.o_proj_2(o)
 
         if return_attention:
             return o, attention
@@ -158,12 +187,18 @@ class Backbone(nn.Module):
         #     nn.Linear(embedding_size, embedding_size), 
         #     nn.SELU())
         
+        self.seg_embed = nn.Embedding(3, embedding_size)
         self.attn = MultiheadAttention(input_dim=embedding_size, embed_dim=embedding_size, num_heads=8)
+        # self.attn2 = MultiheadAttention(input_dim=embedding_size, embed_dim=embedding_size, num_heads=8)
 
         self.joint_encoder = JointEncoder(num_joints * 2, embedding_size)
         self.task_id_encoder = TaskIDEncoder(num_tasks, embedding_size)
         self.displacement_query = nn.Parameter(torch.rand(embedding_size))
         self.task_id_displacement_merger = nn.Sequential(
+            nn.Linear(embedding_size * 2, embedding_size),
+            nn.ReLU())
+        self.joints_query = nn.Parameter(torch.rand(embedding_size))
+        self.joints_merger = nn.Sequential(
             nn.Linear(embedding_size * 2, embedding_size),
             nn.ReLU())
         self.action_query = nn.Parameter(torch.rand(embedding_size))
@@ -174,6 +209,8 @@ class Backbone(nn.Module):
         self.controller = Controller(embedding_size, num_joints * 2)
         self.embed_to_target_position = nn.Sequential(
             nn.Linear(embedding_size, 128), 
+            nn.SELU(), 
+            nn.Linear(128, 128), 
             nn.SELU(), 
             nn.Linear(128, 2))
         if add_displacement:
@@ -187,10 +224,12 @@ class Backbone(nn.Module):
         #     nn.Linear(64 * 2 * img_size * img_size // 16, embedding_size), 
         #     nn.ReLU())
 
-        # self.joints_predictor = nn.Sequential(
-        #     nn.Linear(embedding_size, 64), 
-        #     nn.SELU(), 
-        #     nn.Linear(64, num_joints * 2))
+        self.joints_predictor = nn.Sequential(
+            nn.Linear(embedding_size, 64), 
+            nn.SELU(), 
+            nn.Linear(64, 64), 
+            nn.SELU(), 
+            nn.Linear(64, num_joints * 2))
 
         # self.end_position_predictor = nn.Sequential(
         #     nn.Linear(embedding_size, 64), 
@@ -230,6 +269,9 @@ class Backbone(nn.Module):
         # Prepare task id as a query
         task_embedding = self.task_id_encoder(target_id).unsqueeze(1)
         joint_embedding = self.joint_encoder(joints).unsqueeze(1)
+        joints_query = self.joints_query.unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1)
+        # joints_query = torch.cat((joint_embedding, joints_query), dim=2)
+        # joints_query = self.joints_merger(joints_query)
         # Preparing action query
         action_query = self.action_query.unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1)
         action_query = torch.cat((task_embedding, action_query), dim=2)
@@ -239,20 +281,26 @@ class Backbone(nn.Module):
         displacement_query = torch.cat((task_embedding, displacement_query), dim=2)
         displacement_query = self.task_id_displacement_merger(displacement_query)
         # Concatenate the queries
-        query = torch.cat((task_embedding, action_query, displacement_query), dim=1)
+        query = torch.cat((task_embedding, action_query, displacement_query, joints_query), dim=1)
 
         # Attention itself. prepro is just a linear layer
         img_embedding = self.img_embed_prepro(img_embedding)
+        seg_embed = self.seg_embed(torch.tensor(np.array([1] * H_W), dtype=torch.int32).unsqueeze(0).repeat(batch_size, 1).to(self.device))
         if displacement_embedding is not None:
             img_embedding = torch.cat((displacement_embedding.unsqueeze(1), img_embedding), dim=1)
-        # img_embedding = torch.cat((joint_embedding, img_embedding), dim=1)
-        state_embedding, attn_map = self.attn(query, img_embedding, img_embedding, return_attention=True)
+            seg_embed = self.seg_embed(torch.tensor(np.array([0] + [2] + [1] * H_W), dtype=torch.int32).unsqueeze(0).repeat(batch_size, 1).to(self.device))
+        # img_embedding = torch.cat((joint_embedding, img_embedding), dim=1) + seg_embed
+
+        cortex = torch.cat((query, img_embedding), dim=1)
+        state_embedding, attn_map = self.attn(cortex, cortex, cortex, return_attention=True)
+        # state_embedding, attn_map = self.attn2(state_embedding1, state_embedding1, state_embedding1, return_attention=True)
         # state_embedding = state_embedding.squeeze(1)
 
         # Post-attn operations. Predict the results from the state embedding
         target_position_pred = self.embed_to_target_position(state_embedding[:,0,:])
+        joints_pred = self.joints_predictor(state_embedding[:,3,:])
         action_pred = self.controller(state_embedding[:,1,:])
         if self.add_displacement:
             displacement_pred = self.embed_to_displacement(state_embedding[:, 2, :])
-            return action_pred, target_position_pred, displacement_pred, state_embedding[:, 2, :], attn_map
-        return action_pred, target_position_pred, attn_map
+            return action_pred, target_position_pred, displacement_pred, state_embedding[:, 2, :], attn_map, joints_pred
+        return action_pred, target_position_pred, attn_map, joints_pred
