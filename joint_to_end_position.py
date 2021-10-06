@@ -1,9 +1,9 @@
 import numpy as np
-from models.backbone_small_image import Backbone
 from utils.load_data import ComprehensiveRobotDataset
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
+import torch.nn.functional as F
 import torch
 import os
 import matplotlib.pyplot as plt
@@ -16,13 +16,39 @@ else:
     device = torch.device('cpu')
 
 
+class JointsToEndPosition(nn.Module):
+    def __init__(self, num_joints=2):
+        super(JointsToEndPosition, self).__init__()
+        self.layer1 = nn.Linear(num_joints * 2, 128)
+        self.layer2 = nn.Linear(128, 128)
+        self.layer3 = nn.Linear(128, 128)
+        # self.layer4 = nn.Linear(256, 256)
+        # self.layer6 = nn.Linear(256, 256)
+        self.layer5 = nn.Linear(128, 2)
+
+    def forward(self, x):
+        # a = torch.asin(x[:, 0:1])
+        # b = torch.acos(x[:, 1:2])
+        # c = torch.asin(x[:, 2:3])
+        # d = torch.acos(x[:, 3:])
+        # print(a.shape)
+        # x = torch.cat((a, b, c, d), dim=1)
+        x = F.selu(self.layer1(x))
+        x = F.selu(self.layer2(x))
+        x = F.selu(self.layer3(x))
+        # x = F.selu(self.layer4(x))
+        # x = F.selu(self.layer6(x))
+        x = self.layer5(x)
+        return x
+
+
 def train(writer, name, epoch_idx, data_loader, model, 
     optimizer, criterion, ckpt_path, save_ckpt):
 
     for idx, (img, joints, task_id, end_position, object_list, target_position, next_joints, displacement) in enumerate(data_loader):
         # Prepare data
         img = img.to(device)
-        joints = joints.to(device)
+        joints = joints.to(device) / 100
         task_id = task_id.to(device)
         end_position = end_position.to(device)
         object_list = object_list.to(device)
@@ -37,22 +63,8 @@ def train(writer, name, epoch_idx, data_loader, model,
         # loss1 = (criterion(action_pred, next_joints) + criterion(action_pred2, next_joints)) / 2
         # loss5 = (criterion(target_position_pred, target_position) + criterion(target_position_pred2, target_position)) / 2
         # loss6 = (criterion(displacement_pred, displacement) + criterion(displacement_pred2, displacement)) / 2
-        if epoch_idx < 4:
-            attn_mask = np.ones((260, 260))
-            attn_mask[:, 3] = -10000000
-            attn_mask[3, :] = -10000000
-            attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        else:
-            attn_mask = np.ones((260, 260))
-            attn_mask[:, 3] = 0
-            attn_mask[3, :] = 0
-            attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        action_pred, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id, attn_mask)
-        loss1 = criterion(action_pred, next_joints)
-        loss5 = criterion(target_position_pred, target_position)
-        loss6 = criterion(displacement_pred, displacement)
-        loss7 = criterion(joints_pred, joints)
-        loss = loss1 + loss5 + loss6 + loss7
+        position_pred = model(joints)
+        loss = criterion(position_pred, end_position)
         # loss = loss1 + loss5
         
         # Backward pass
@@ -63,10 +75,10 @@ def train(writer, name, epoch_idx, data_loader, model,
 
         # Log and print
         writer.add_scalar('train loss', loss, global_step=epoch_idx * len(data_loader) + idx)
-        print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}')
+        print(f'epoch {epoch_idx}, step {idx}, loss {loss.item():.2f}')
+        print(joints.detach().cpu().numpy()[0], end_position.detach().cpu().numpy()[0], position_pred.detach().cpu().numpy()[0])
         # print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}')
         # print(displacement.detach().cpu().numpy()[0], displacement_pred.detach().cpu().numpy()[0])
-        print(task_id.detach().cpu().numpy()[0], target_position.detach().cpu().numpy()[0])
         # if epoch_idx * len(data_loader) + idx > 600:
         #     fig = plt.figure(figsize=(10, 5))
         #     attn_map = attn_map.sum(axis=1)
@@ -108,7 +120,7 @@ def main(writer, name, batch_size=192):
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                           shuffle=True, num_workers=2)
     # load model
-    model = Backbone(128, 2, 3, 128, add_displacement=add_displacement)
+    model = JointsToEndPosition()
     model = model.to(device)
     optimizer = optim.Adam(model.parameters())
     criterion = nn.MSELoss()
@@ -121,7 +133,7 @@ def main(writer, name, batch_size=192):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train11-1-detr2-small-image-joint-attn-mask-decrease'
+    name = 'train10-1-joints-to-end-position'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

@@ -345,7 +345,7 @@ class ComprehensiveRobotDataset(Dataset):
         use_trigonometric_representation=False, 
         use_delta=False, normalize=False,
         ending_angles_as_next=False, amplify_trigonometric=False,
-        add_displacement=False):
+        add_displacement=False, accumulate_angles=False):
 
         self.add_displacement = add_displacement
 
@@ -388,6 +388,10 @@ class ComprehensiveRobotDataset(Dataset):
 
             # Load joints and next joints
             joints_log_np = np.load(os.path.join(trace, joints_log))
+            if accumulate_angles:
+                # print(joints_log_np.shape)
+                joints_log_np[:, 1] = joints_log_np[:, 0] + joints_log_np[:, 1]
+                # print(joints_log_np.shape)
             joints_log_np[joints_log_np < 0] += 2 * np.pi
             joints_log_np[joints_log_np > 2 * np.pi] -= 2 * np.pi
             self.joints.append(joints_log_np[:-1])
