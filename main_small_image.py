@@ -37,22 +37,35 @@ def train(writer, name, epoch_idx, data_loader, model,
         # loss1 = (criterion(action_pred, next_joints) + criterion(action_pred2, next_joints)) / 2
         # loss5 = (criterion(target_position_pred, target_position) + criterion(target_position_pred2, target_position)) / 2
         # loss6 = (criterion(displacement_pred, displacement) + criterion(displacement_pred2, displacement)) / 2
-        if epoch_idx < 4:
+        if epoch_idx < 2:
             attn_mask = np.ones((260, 260))
             attn_mask[:, 3] = -10000000
             attn_mask[3, :] = -10000000
+            attn_mask[:, 1] = -10000000
+            attn_mask[1, :] = -10000000
+            attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+        elif epoch_idx < 4:
+            attn_mask = np.ones((260, 260))
+            # attn_mask[:, 3] = -10000000
+            # attn_mask[3, :] = -10000000
             attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
         else:
             attn_mask = np.ones((260, 260))
-            attn_mask[:, 3] = 0
-            attn_mask[3, :] = 0
+            # attn_mask[:, 3] = 0
+            # attn_mask[3, :] = 0
             attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
         action_pred, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id, attn_mask)
         loss1 = criterion(action_pred, next_joints)
         loss5 = criterion(target_position_pred, target_position)
         loss6 = criterion(displacement_pred, displacement)
         loss7 = criterion(joints_pred, joints)
-        loss = loss1 + loss5 + loss6 + loss7
+
+        if epoch_idx < 2:
+            loss = loss5 + loss6
+        elif epoch_idx < 4:
+            loss = loss5 + loss6 + loss7
+        else:
+            loss = loss1 + loss5 + loss6 + loss7
         # loss = loss1 + loss5
         
         # Backward pass
@@ -121,7 +134,7 @@ def main(writer, name, batch_size=192):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train11-1-detr2-small-image-joint-attn-mask-decrease'
+    name = 'train11-1-detr2-pure-action-query'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

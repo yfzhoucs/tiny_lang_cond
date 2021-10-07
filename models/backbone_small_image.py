@@ -85,6 +85,20 @@ class JointEncoder(nn.Module):
         return x
 
 
+class Controller(nn.Module):
+    def __init__(self, embedding_size, num_joints):
+        super(Controller, self).__init__()
+        self.layer1 = nn.Linear(embedding_size, 16 * 16)
+        self.layer2 = nn.Linear(16 * 16, 16 * 16)
+        self.layer3 = nn.Linear(16 * 16, num_joints)
+
+    def forward(self, x):
+        x = F.selu(self.layer1(x))
+        x = F.selu(self.layer2(x))
+        x = self.layer3(x)
+        return x
+
+
 # Based on https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial6/Transformers_and_MHAttention.html
 class MultiheadAttention(nn.Module):
 
@@ -273,8 +287,8 @@ class Backbone(nn.Module):
         task_embedding = self.task_id_encoder(target_id).unsqueeze(1)
         # Prepare action query
         action_query = self.action_query.unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1)
-        action_query = torch.cat((task_embedding, action_query), dim=2)
-        action_query = self.task_id_action_merger(action_query)
+        # action_query = torch.cat((task_embedding, action_query), dim=2)
+        # action_query = self.task_id_action_merger(action_query)
         # Preparing displacement query
         displacement_query = self.displacement_query.unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1)
         displacement_query = torch.cat((task_embedding, displacement_query), dim=2)
