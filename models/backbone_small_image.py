@@ -291,8 +291,8 @@ class Backbone(nn.Module):
         # action_query = self.task_id_action_merger(action_query)
         # Preparing displacement query
         displacement_query = self.displacement_query.unsqueeze(0).unsqueeze(1).repeat(batch_size, 1, 1)
-        displacement_query = torch.cat((task_embedding, displacement_query), dim=2)
-        displacement_query = self.task_id_displacement_merger(displacement_query)
+        # displacement_query = torch.cat((task_embedding, displacement_query), dim=2)
+        # displacement_query = self.task_id_displacement_merger(displacement_query)
         # Concatenate the queries
         questions = torch.cat((task_embedding, action_query, displacement_query), dim=1)
 
