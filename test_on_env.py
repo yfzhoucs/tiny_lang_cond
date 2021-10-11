@@ -78,7 +78,9 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         img = img.to(device)
         joints = joints.to(device)
         task_id = task_id.to(device)
-        action, _, displacement_pred, _, _ = model(img, joints, task_id)
+        attn_mask = np.ones((260, 260))
+        attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+        action, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id, attn_mask=attn_mask)
         action = action.to('cpu')
 
         # Execute action
@@ -124,7 +126,7 @@ def main(model_path, use_delta, input_goal=False):
     target_y = object_geom_list.get_objects()[goal][1]
 
     # load model
-    model = Backbone(128, 2, 3, 128, add_displacement=True, device=device).to(device)
+    model = Backbone(128, 2, 3, 192, add_displacement=True, device=device).to(device)
     model.load_state_dict(torch.load(model_path))
 
     # Execution loop
@@ -137,7 +139,7 @@ def main(model_path, use_delta, input_goal=False):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train9-9-detr2-small-image/9.pth'
+    model_path = '/share/yzhou298/train11-1-detr2-pure-action-query-pure-displacement-query4/9.pth'
     use_delta = True
     trials = 100
     success = 0

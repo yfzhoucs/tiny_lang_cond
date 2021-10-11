@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from models.task_id_encoder import TaskIDEncoder
 from models.cross_attention_bert import CrossAttentionBERT
-from models.controller import Controller
 import numpy as np
 import math
 import torch.nn.functional as F
@@ -90,12 +89,14 @@ class Controller(nn.Module):
         super(Controller, self).__init__()
         self.layer1 = nn.Linear(embedding_size, 16 * 16)
         self.layer2 = nn.Linear(16 * 16, 16 * 16)
-        self.layer3 = nn.Linear(16 * 16, num_joints)
+        self.layer3 = nn.Linear(16 * 16, 16 * 16)
+        self.layer4 = nn.Linear(16 * 16, num_joints)
 
     def forward(self, x):
         x = F.selu(self.layer1(x))
         x = F.selu(self.layer2(x))
-        x = self.layer3(x)
+        x = F.selu(self.layer3(x))
+        x = self.layer4(x)
         return x
 
 
@@ -202,7 +203,7 @@ class Backbone(nn.Module):
         #     nn.SELU())
         
         self.seg_embed = nn.Embedding(3, embedding_size)
-        self.attn = nn.MultiheadAttention(embed_dim=embedding_size, num_heads=8, device=device, batch_first=True)
+        self.attn = nn.MultiheadAttention(embed_dim=embedding_size, num_heads=12, device=device, batch_first=True)
         # self.attn2 = MultiheadAttention(input_dim=embedding_size, embed_dim=embedding_size, num_heads=8)
 
         self.joint_encoder = JointEncoder(num_joints * 2, embedding_size)
@@ -256,6 +257,8 @@ class Backbone(nn.Module):
             nn.Linear(64, 64), 
             nn.SELU(), 
             nn.Linear(64, num_joints * 2))
+
+        # self.attn_mask = nn.Parameter(torch.rand(260, 260))
 
     def forward(self, img, joints, target_id, attn_mask):
         # Comprehensive Visual Encoder. img_embedding is the square token list

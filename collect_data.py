@@ -181,10 +181,10 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disabl
 if __name__ == '__main__':
     screen_width = 128
     screen_height = 128
-    data_dir = './data_position_part2/'
+    data_dir = './data_position_part3/'
 
     if not os.path.isdir(data_dir):
         os.mkdir(data_dir)
-    for i in range(1500, 2000):
+    for i in range(2978, 3000):
         data_id = i
         collect_sequence_data(data_id, screen_width, screen_height, data_dir)

@@ -17,9 +17,11 @@ else:
 
 
 def train(writer, name, epoch_idx, data_loader, model, 
-    optimizer, criterion, ckpt_path, save_ckpt):
-
+    optimizer, criterion, ckpt_path, save_ckpt, loss_stage):
+    loss_array = np.array([100000.0] * 50)
     for idx, (img, joints, task_id, end_position, object_list, target_position, next_joints, displacement) in enumerate(data_loader):
+        global_step = epoch_idx * len(data_loader) + idx
+
         # Prepare data
         img = img.to(device)
         joints = joints.to(device)
@@ -37,29 +39,49 @@ def train(writer, name, epoch_idx, data_loader, model,
         # loss1 = (criterion(action_pred, next_joints) + criterion(action_pred2, next_joints)) / 2
         # loss5 = (criterion(target_position_pred, target_position) + criterion(target_position_pred2, target_position)) / 2
         # loss6 = (criterion(displacement_pred, displacement) + criterion(displacement_pred2, displacement)) / 2
-        if epoch_idx < 1:
-            attn_mask = np.ones((260, 260))
+        # if epoch_idx < 1:
+        #     attn_mask = np.ones((260, 260))
+        #     attn_mask[:, 3] = -10000000
+        #     attn_mask[3, :] = -10000000
+        #     attn_mask[:, 1] = -10000000
+        #     attn_mask[1, :] = -10000000
+        #     attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+        # elif epoch_idx < 3:
+        #     attn_mask = np.ones((260, 260))
+        #     attn_mask[:, 3] = -10000000
+        #     attn_mask[3, :] = -10000000
+        #     attn_mask[:, 1] = -10000000
+        #     attn_mask[1, :] = -10000000
+        #     attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+        # elif epoch_idx < 5:
+        #     attn_mask = np.ones((260, 260))
+        #     # attn_mask[:, 3] = -10000000
+        #     # attn_mask[3, :] = -10000000
+        #     attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+        # else:
+        #     attn_mask = np.ones((260, 260))
+        #     # attn_mask[:, 3] = 0
+        #     # attn_mask[3, :] = 0
+        #     attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+        if loss_stage == 0:
+            attn_mask = np.ones((260, 260), dtype=float) * 10000000
             attn_mask[:, 3] = -10000000
             attn_mask[3, :] = -10000000
             attn_mask[:, 1] = -10000000
             attn_mask[1, :] = -10000000
             attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        elif epoch_idx < 2:
-            attn_mask = np.ones((260, 260))
+        elif loss_stage == 1:
+            attn_mask = np.ones((260, 260), dtype=float)
             attn_mask[:, 3] = -10000000
             attn_mask[3, :] = -10000000
             attn_mask[:, 1] = -10000000
             attn_mask[1, :] = -10000000
             attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        elif epoch_idx < 4:
-            attn_mask = np.ones((260, 260))
-            # attn_mask[:, 3] = -10000000
-            # attn_mask[3, :] = -10000000
+        elif loss_stage == 2:
+            attn_mask = np.ones((260, 260), dtype=float)
             attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
         else:
-            attn_mask = np.ones((260, 260))
-            # attn_mask[:, 3] = 0
-            # attn_mask[3, :] = 0
+            attn_mask = np.ones((260, 260), dtype=float)
             attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
         action_pred, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id, attn_mask)
         loss1 = criterion(action_pred, next_joints)
@@ -67,14 +89,26 @@ def train(writer, name, epoch_idx, data_loader, model,
         loss6 = criterion(displacement_pred, displacement)
         loss7 = criterion(joints_pred, joints)
 
-        if epoch_idx < 1:
+        # if epoch_idx < 1:
+        #     loss = loss5
+        # elif epoch_idx < 2:
+        #     loss = loss5 + loss6
+        # elif epoch_idx < 3:
+        #     loss = loss5 + loss6 + loss7
+        # else:
+        #     loss = loss1 + loss5 + loss6 + loss7
+        if loss_array.mean() < 45:
+            loss_stage += 1
+
+        if loss_stage == 0:
             loss = loss5
-        elif epoch_idx < 2:
+        elif loss_stage == 1:
             loss = loss5 + loss6
-        elif epoch_idx < 4:
+        elif loss_stage == 2:
             loss = loss5 + loss6 + loss7
         else:
             loss = loss1 + loss5 + loss6 + loss7
+        loss_array[global_step % len(loss_array)] = loss.item()
         # loss = loss1 + loss5
         
         # Backward pass
@@ -85,7 +119,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
         # Log and print
         writer.add_scalar('train loss', loss, global_step=epoch_idx * len(data_loader) + idx)
-        print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}')
+        print(f'epoch {epoch_idx}, step {idx}, loss_stage {loss_stage}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}')
         # print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}')
         # print(displacement.detach().cpu().numpy()[0], displacement_pred.detach().cpu().numpy()[0])
         print(task_id.detach().cpu().numpy()[0], target_position.detach().cpu().numpy()[0])
@@ -109,17 +143,18 @@ def train(writer, name, epoch_idx, data_loader, model,
         if not os.path.isdir(os.path.join(ckpt_path, name)):
             os.mkdir(os.path.join(ckpt_path, name))
         torch.save(model.state_dict(), os.path.join(ckpt_path, name, f'{epoch_idx}.pth'))
+    return loss_stage
 
 
-def main(writer, name, batch_size=192):
+def main(writer, name, batch_size=144):
     ckpt_path = r'/share/yzhou298'
-    save_ckpt = False
+    save_ckpt = True
     add_displacement = True
     accumulate_angles = True
 
     # load data
     dataset = ComprehensiveRobotDataset(
-        data_dir='./data_position_2000/', 
+        data_dir='./data_position_5000/', 
         use_trigonometric_representation=True, 
         use_delta=True,
         normalize=False,
@@ -136,14 +171,15 @@ def main(writer, name, batch_size=192):
     criterion = nn.MSELoss()
 
     # train n epoches
-    for i in range(30):
-        train(writer, name, i, data_loader, model, optimizer, 
-            criterion, ckpt_path, save_ckpt)
+    loss_stage = 0
+    for i in range(5):
+        loss_stage = train(writer, name, i, data_loader, model, optimizer, 
+            criterion, ckpt_path, save_ckpt, loss_stage)
 
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train11-1-detr2-pure-action-query-pure-displacement-query'
+    name = 'train11-1-curriculum-5000-2'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)
