@@ -1,5 +1,5 @@
 import numpy as np
-from models.backbone_small_image import Backbone
+from models.backbone_multi_layer_attn import Backbone
 from utils.load_data import ComprehensiveRobotDataset
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim

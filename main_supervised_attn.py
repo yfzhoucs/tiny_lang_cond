@@ -16,6 +16,16 @@ else:
     device = torch.device('cpu')
 
 
+def target_position_to_index(target_position):
+    target_position = target_position.detach().cpu().numpy() + 64
+    index = (target_position[:, 0]) // 16 + 4 + 16 * (15 - target_position[:, 0] // 16)
+    # print(target_position[:, 0] // 16)
+    # print(15 - target_position[:, 0] // 16)
+    index = index.astype(int)
+    index = torch.tensor(index).to(device).unsqueeze(1)
+    return index
+
+
 def train(writer, name, epoch_idx, data_loader, model, 
     optimizer, criterion, ckpt_path, save_ckpt, loss_stage):
     loss_array = np.array([100000.0] * 50)
@@ -88,6 +98,11 @@ def train(writer, name, epoch_idx, data_loader, model,
         loss5 = criterion(target_position_pred, target_position)
         loss6 = criterion(displacement_pred, displacement)
         loss7 = criterion(joints_pred, joints)
+        # print(attn_map[0, 0, :])
+        # print(target_position_to_index(target_position))
+        position_attn = torch.gather(attn_map[:, 0, :], 1, target_position_to_index(target_position))
+        # print(position_attn.shape)
+        loss_attn = criterion(position_attn, torch.ones(attn_map.shape[0], 1, dtype=torch.float32).to(device))
 
         # if epoch_idx < 1:
         #     loss = loss5
@@ -101,7 +116,8 @@ def train(writer, name, epoch_idx, data_loader, model,
             loss_stage += 1
 
         if loss_stage == 0:
-            loss = loss5
+            loss = loss5 + loss_attn
+            # print(loss5.item())
         elif loss_stage == 1:
             loss = loss5 + loss6
         elif loss_stage == 2:
@@ -148,7 +164,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
 def main(writer, name, batch_size=144):
     ckpt_path = r'/share/yzhou298'
-    save_ckpt = True
+    save_ckpt = False
     add_displacement = True
     accumulate_angles = False
 
@@ -179,7 +195,7 @@ def main(writer, name, batch_size=144):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train11-2-curriculum-5000-3'
+    name = 'train11-3-supervised-attn-3'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

@@ -23,8 +23,10 @@ def even_distribution_in_a_circle(circle_radius=50):
     return x, y
 
 
-def convert_obversations_to_torch(joints, img):
+def convert_obversations_to_torch(joints, img, accumulate_angles=False):
     joints = np.reshape(joints, (1, 2))
+    if accumulate_angles:
+        joints[0][1] = joints[0][1] + joints[0][0]
     transform_matrix = np.array([[1, 1, 0, 0], [0, 0, 1, 1]])
     joints = np.dot(joints, transform_matrix)
     for i in range(2):
@@ -36,7 +38,7 @@ def convert_obversations_to_torch(joints, img):
     return joints, img
 
 
-def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False):
+def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False, accumulate_angles=False):
     action = action.detach().numpy()
 
     if use_delta:
@@ -58,10 +60,13 @@ def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False):
             action_rad[i] += np.pi * 2
     # print('rad', action, action_rad)
 
+    if accumulate_angles:
+        action_rad[1] = action_rad[1] - action_rad[0]
+
     return action_rad
 
 
-def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, error_limit=5):
+def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, error_limit=5, accumulate_angles=False):
     task_id = torch.tensor([task_id], dtype=torch.int32)
 
     # Get observations from t_0
@@ -74,7 +79,7 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
     while step < 300:
 
         # Predict action from the model
-        joints, img = convert_obversations_to_torch(joints, img)
+        joints, img = convert_obversations_to_torch(joints, img, accumulate_angles)
         img = img.to(device)
         joints = joints.to(device)
         task_id = task_id.to(device)
@@ -84,7 +89,7 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         action = action.to('cpu')
 
         # Execute action
-        action = convert_action_to_numpy(action, joints, use_delta)
+        action = convert_action_to_numpy(action, joints, use_delta, accumulate_angles)
         joints, _, _, _ = env.step(action)
         img = env.render(mode="rgb_array")
 
@@ -102,7 +107,7 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
     return 0
 
 
-def main(model_path, use_delta, input_goal=False):
+def main(model_path, use_delta, input_goal=False, accumulate_angles=False):
     # Create an environment
     screen_width = 128
     screen_height = 128
@@ -130,7 +135,7 @@ def main(model_path, use_delta, input_goal=False):
     model.load_state_dict(torch.load(model_path))
 
     # Execution loop
-    success = execution_loop(model, env, robot, goal, target_x, target_y, use_delta)
+    success = execution_loop(model, env, robot, goal, target_x, target_y, use_delta, accumulate_angles)
 
     # Close the environment
     env.close()
@@ -139,12 +144,13 @@ def main(model_path, use_delta, input_goal=False):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train11-1-detr2-pure-action-query-pure-displacement-query4/9.pth'
+    model_path = '/share/yzhou298/train11-1-curriculum-5000-2/3.pth'
     use_delta = True
+    accumulate_angles = True
     trials = 100
     success = 0
     for i in range(trials):
-        success += main(model_path, use_delta, input_goal=False)
+        success += main(model_path, use_delta, input_goal=False, accumulate_angles=accumulate_angles)
         print(i + 1, success)
     success_rate = success / trials
     print(success_rate)
