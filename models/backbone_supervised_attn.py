@@ -203,7 +203,7 @@ class Backbone(nn.Module):
         #     nn.SELU())
         
         self.seg_embed = nn.Embedding(3, embedding_size)
-        self.attn = nn.MultiheadAttention(embed_dim=embedding_size, num_heads=12, device=device, batch_first=True)
+        self.attn = nn.MultiheadAttention(embed_dim=embedding_size, num_heads=8, device=device, batch_first=True)
         # self.attn2 = MultiheadAttention(input_dim=embedding_size, embed_dim=embedding_size, num_heads=8)
 
         self.joint_encoder = JointEncoder(num_joints * 2, embedding_size)
@@ -285,6 +285,9 @@ class Backbone(nn.Module):
         perception_query = torch.cat((joints_query, img_embedding), dim=1)
         perception_key = torch.cat((joints_key, img_embedding), dim=1)
         perception_value = torch.cat((joints_value, img_embedding), dim=1)
+        # perception_query = img_embedding
+        # perception_key = img_embedding
+        # perception_value = img_embedding
 
         # Prepare task id query
         task_embedding = self.task_id_encoder(target_id).unsqueeze(1)
@@ -298,6 +301,7 @@ class Backbone(nn.Module):
         # displacement_query = self.task_id_displacement_merger(displacement_query)
         # Concatenate the queries
         questions = torch.cat((task_embedding, action_query, displacement_query), dim=1)
+        # questions = task_embedding
 
         # Attention itself. 
         # Cortex is the concatenation of query and img_embedding
@@ -312,5 +316,6 @@ class Backbone(nn.Module):
         action_pred = self.controller(state_embedding[:,1,:])
         if self.add_displacement:
             displacement_pred = self.embed_to_displacement(state_embedding[:, 2, :])
+            # return target_position_pred, attn_map
             return action_pred, target_position_pred, displacement_pred, state_embedding[:, 2, :], attn_map, joints_pred
         return action_pred, target_position_pred, attn_map, joints_pred

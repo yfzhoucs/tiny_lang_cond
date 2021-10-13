@@ -1,5 +1,5 @@
 import numpy as np
-from models.backbone_small_image import Backbone
+from models.backbone_supervised_attn import Backbone
 from utils.load_data import ComprehensiveRobotDataset
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
@@ -16,11 +16,11 @@ else:
     device = torch.device('cpu')
 
 
-def target_position_to_index(target_position):
-    target_position = target_position.detach().cpu().numpy() + 64
-    index = (target_position[:, 0]) // 16 + 4 + 16 * (15 - target_position[:, 0] // 16)
-    # print(target_position[:, 0] // 16)
-    # print(15 - target_position[:, 0] // 16)
+def pixel_position_to_attn_index(pixel_position, attn_map_offset=4):
+    pixel_position = pixel_position.detach().cpu().numpy() + 64
+    index = (pixel_position[:, 0]) // 8 + attn_map_offset + 16 * (15 - pixel_position[:, 1] // 8)
+    # print(pixel_position[0, 0], pixel_position[0, 0] // 8)
+    # print(pixel_position[0, 1], 15 - pixel_position[0, 1] // 8)
     index = index.astype(int)
     index = torch.tensor(index).to(device).unsqueeze(1)
     return index
@@ -73,59 +73,63 @@ def train(writer, name, epoch_idx, data_loader, model,
         #     # attn_mask[:, 3] = 0
         #     # attn_mask[3, :] = 0
         #     attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        if loss_stage == 0:
-            attn_mask = np.ones((260, 260), dtype=float) * 10000000
-            attn_mask[:, 3] = -10000000
-            attn_mask[3, :] = -10000000
-            attn_mask[:, 1] = -10000000
-            attn_mask[1, :] = -10000000
-            attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        elif loss_stage == 1:
-            attn_mask = np.ones((260, 260), dtype=float)
-            attn_mask[:, 3] = -10000000
-            attn_mask[3, :] = -10000000
-            attn_mask[:, 1] = -10000000
-            attn_mask[1, :] = -10000000
-            attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        elif loss_stage == 2:
-            attn_mask = np.ones((260, 260), dtype=float)
-            attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        else:
-            attn_mask = np.ones((260, 260), dtype=float)
-            attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        action_pred, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id, attn_mask)
+        # if loss_stage == 0:
+        #     attn_mask = np.ones((260, 260), dtype=float) * 10000000
+        #     attn_mask[:, 3] = -10000000
+        #     attn_mask[3, :] = -10000000
+        #     attn_mask[:, 1] = -10000000
+        #     attn_mask[1, :] = -10000000
+        #     attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+        # elif loss_stage == 1:
+        #     attn_mask = np.ones((260, 260), dtype=float)
+        #     attn_mask[:, 3] = -10000000
+        #     attn_mask[3, :] = -10000000
+        #     attn_mask[:, 1] = -10000000
+        #     attn_mask[1, :] = -10000000
+        #     attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+        # elif loss_stage == 2:
+        #     attn_mask = np.ones((260, 260), dtype=float)
+        #     attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+        # else:
+        #     attn_mask = np.ones((260, 260), dtype=float)
+        #     attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+
+
+
+        action_pred, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id)
+        # target_position_pred, attn_map = model(img, joints, task_id)
         loss1 = criterion(action_pred, next_joints)
         loss5 = criterion(target_position_pred, target_position)
         loss6 = criterion(displacement_pred, displacement)
         loss7 = criterion(joints_pred, joints)
-        # print(attn_map[0, 0, :])
-        # print(target_position_to_index(target_position))
-        position_attn = torch.gather(attn_map[:, 0, :], 1, target_position_to_index(target_position))
-        # print(position_attn.shape)
-        loss_attn = criterion(position_attn, torch.ones(attn_map.shape[0], 1, dtype=torch.float32).to(device))
 
-        # if epoch_idx < 1:
-        #     loss = loss5
-        # elif epoch_idx < 2:
-        #     loss = loss5 + loss6
-        # elif epoch_idx < 3:
-        #     loss = loss5 + loss6 + loss7
-        # else:
-        #     loss = loss1 + loss5 + loss6 + loss7
-        if loss_array.mean() < 70:
+        target_position_attn = torch.gather(attn_map[:, 0, :], 1, pixel_position_to_attn_index(target_position, attn_map_offset=4))
+        loss_attn_target_position = criterion(target_position_attn, torch.ones(attn_map.shape[0], 1, dtype=torch.float32).to(device))
+        end_position_attn = torch.gather(attn_map[:, 3, :], 1, pixel_position_to_attn_index(end_position, attn_map_offset=4))
+        loss_attn_end_position = criterion(end_position_attn, torch.ones(attn_map.shape[0], 1, dtype=torch.float32).to(device) / 2)
+        target_position_attn2 = torch.gather(attn_map[:, 3, :], 1, pixel_position_to_attn_index(target_position, attn_map_offset=4))
+        loss_target_position_attn2 = criterion(target_position_attn2, torch.ones(attn_map.shape[0], 1, dtype=torch.float32).to(device) / 2)
+
+
+        if loss_array.mean() < 75:
             loss_stage += 1
 
         if loss_stage == 0:
-            loss = loss5 + loss_attn
+            loss = loss5 + loss_attn_target_position * 5000
             # print(loss5.item())
         elif loss_stage == 1:
-            loss = loss5 + loss6
+            loss = loss5 + loss6# + loss_attn_end_position * 1000 + loss_target_position_attn2 * 1000
         elif loss_stage == 2:
             loss = loss5 + loss6 + loss7
         else:
             loss = loss1 + loss5 + loss6 + loss7
         loss_array[global_step % len(loss_array)] = loss.item()
-        # loss = loss1 + loss5
+        if loss_stage == 0:
+            loss_array[global_step % len(loss_array)] -= loss_attn_target_position * 5000
+        # elif loss_stage == 1:
+        #     loss_array[global_step % len(loss_array)] -= loss_attn_end_position * 1000 + loss_target_position_attn2 * 1000
+
+        # loss = loss5 + loss_attn_target_position * 5000
         
         # Backward pass
         loss.backward()
@@ -136,23 +140,37 @@ def train(writer, name, epoch_idx, data_loader, model,
         # Log and print
         writer.add_scalar('train loss', loss, global_step=epoch_idx * len(data_loader) + idx)
         print(f'epoch {epoch_idx}, step {idx}, loss_stage {loss_stage}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}')
+        # print(f'epoch {epoch_idx}, step {idx}, loss_stage {loss_stage}, loss5 {loss5.item():.2f}, loss_array {loss_array.mean()}')
         # print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}')
         # print(displacement.detach().cpu().numpy()[0], displacement_pred.detach().cpu().numpy()[0])
         print(task_id.detach().cpu().numpy()[0], target_position.detach().cpu().numpy()[0])
         # if epoch_idx * len(data_loader) + idx > 600:
+            # fig = plt.figure(figsize=(10, 5))
+            # attn_map = attn_map.sum(axis=1)
+            # attn_map = attn_map.detach().cpu().numpy()[0].reshape((32, 32))
+            # fig.add_subplot(1, 2, 1)
+            # plt.imshow(attn_map, cmap='Greys')
+            # plt.colorbar()
+            # fig.add_subplot(1, 2, 2)
+            # plt.imshow(img.detach().cpu().numpy()[0])
+            # plt.title(str(task_id.detach().cpu().numpy()[0]))
+            # plt.show()
+
+            # plt.close()
+            # plt.cla()
+
+        # if global_step > 1000:
         #     fig = plt.figure(figsize=(10, 5))
-        #     attn_map = attn_map.sum(axis=1)
-        #     attn_map = attn_map.detach().cpu().numpy()[0].reshape((32, 32))
+        #     attn_supervision = np.zeros((256))
+        #     attn_supervision[pixel_position_to_attn_index(target_position, attn_map_offset=0).detach().cpu().numpy()[0]] = 1
+        #     attn_supervision = attn_supervision.reshape((16, 16))
         #     fig.add_subplot(1, 2, 1)
-        #     plt.imshow(attn_map, cmap='Greys')
+        #     plt.imshow(attn_supervision, cmap='Greys')
         #     plt.colorbar()
         #     fig.add_subplot(1, 2, 2)
         #     plt.imshow(img.detach().cpu().numpy()[0])
         #     plt.title(str(task_id.detach().cpu().numpy()[0]))
         #     plt.show()
-
-            # plt.close()
-            # plt.cla()
 
     # Save checkpoint
     if save_ckpt:
@@ -195,7 +213,7 @@ def main(writer, name, batch_size=144):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train11-3-supervised-attn-3'
+    name = 'train11-3-supervised-attn'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)
