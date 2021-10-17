@@ -1,8 +1,11 @@
 from collect_data import l2
 from envs import reach
-from models.backbone_supervised_attn import Backbone
+from models.backbone_detr2 import Backbone
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+# from matplotlib.animation import PillowWriter
 
 
 if torch.cuda.is_available():
@@ -10,6 +13,14 @@ if torch.cuda.is_available():
 else:
     device = torch.device('cpu')
 # device = torch.device('cpu')
+
+
+fig = plt.figure()
+task_dict = {
+    0: 'Red',
+    1: 'Green',
+    2: 'Blue'
+}
 
 
 # https://stackoverflow.com/questions/46996866/sampling-uniformly-within-the-unit-circle
@@ -66,7 +77,7 @@ def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False, 
     return action_rad
 
 
-def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, error_limit=5, accumulate_angles=False):
+def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, error_limit=5, accumulate_angles=False, count=0):
     task_id = torch.tensor([task_id], dtype=torch.int32)
 
     # Get observations from t_0
@@ -76,6 +87,11 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
 
     # Start looping
     step = 0
+    ims = []
+    ax = plt.imshow(img)
+    # txt = plt.text(0, 0, str(step))
+    plt.title(f'Task == {task_dict[task_id.item()]}', fontsize=20)
+    ims.append([ax])
     while step < 300:
 
         # Predict action from the model
@@ -83,9 +99,7 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         img = img.to(device)
         joints = joints.to(device)
         task_id = task_id.to(device)
-        attn_mask = np.ones((260, 260))
-        attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        action, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id, attn_mask=attn_mask)
+        action, target_position_pred, displacement_pred, displacement_embed, attn_map = model(img, joints, task_id)
         action = action.to('cpu')
 
         # Execute action
@@ -100,14 +114,23 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         print(f'displacement_pred {displacement_pred.detach().cpu().numpy()[0]}')
         print('error', step, np.sqrt(squared_error))
         # input()
+        
+        ax = plt.imshow(img)
+        # txt.set_text(str(step))
+        ims.append([ax])
 
         if squared_error < error_limit * error_limit:
             print('done')
+            ani = animation.ArtistAnimation(fig, ims, interval=50, blit=True, repeat_delay=500)
+            ani.save(f"{count}.gif", writer='imagemagick')
             return 1
+
+    ani = animation.ArtistAnimation(fig, ims, interval=50, blit=True, repeat_delay=500)
+    ani.save(f"{count}.gif", writer='imagemagick')
     return 0
 
 
-def main(model_path, use_delta, input_goal=False, accumulate_angles=False):
+def main(model_path, use_delta, input_goal=False, accumulate_angles=False, count=0):
     # Create an environment
     screen_width = 128
     screen_height = 128
@@ -131,11 +154,11 @@ def main(model_path, use_delta, input_goal=False, accumulate_angles=False):
     target_y = object_geom_list.get_objects()[goal][1]
 
     # load model
-    model = Backbone(128, 2, 3, 192, add_displacement=True, device=device).to(device)
+    model = Backbone(128, 2, 3, 128, add_displacement=True, device=device).to(device)
     model.load_state_dict(torch.load(model_path))
 
     # Execution loop
-    success = execution_loop(model, env, robot, goal, target_x, target_y, use_delta, accumulate_angles)
+    success = execution_loop(model, env, robot, goal, target_x, target_y, use_delta, accumulate_angles=accumulate_angles, count=count)
 
     # Close the environment
     env.close()
@@ -144,13 +167,13 @@ def main(model_path, use_delta, input_goal=False, accumulate_angles=False):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train11-3-supervised-attn5-bs144/1.pth'
+    model_path = '/share/yzhou298/train9-8-attn2-detr2-adding-joint/7.pth'
     use_delta = True
     accumulate_angles = False
-    trials = 100
+    trials = 5
     success = 0
-    for i in range(trials):
-        success += main(model_path, use_delta, input_goal=False, accumulate_angles=accumulate_angles)
+    for i in range(5, 10):
+        success += main(model_path, use_delta, input_goal=False, accumulate_angles=accumulate_angles, count=i)
         print(i + 1, success)
     success_rate = success / trials
     print(success_rate)

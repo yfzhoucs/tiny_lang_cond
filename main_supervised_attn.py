@@ -138,26 +138,26 @@ def train(writer, name, epoch_idx, data_loader, model,
         optimizer.step()
 
         # Log and print
-        writer.add_scalar('train loss', loss, global_step=epoch_idx * len(data_loader) + idx)
+        writer.add_scalar('train loss', loss_array[global_step % len(loss_array)], global_step=epoch_idx * len(data_loader) + idx)
         print(f'epoch {epoch_idx}, step {idx}, loss_stage {loss_stage}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}')
         # print(f'epoch {epoch_idx}, step {idx}, loss_stage {loss_stage}, loss5 {loss5.item():.2f}, loss_array {loss_array.mean()}')
         # print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}')
         # print(displacement.detach().cpu().numpy()[0], displacement_pred.detach().cpu().numpy()[0])
         print(task_id.detach().cpu().numpy()[0], target_position.detach().cpu().numpy()[0])
-        # if epoch_idx * len(data_loader) + idx > 600:
-            # fig = plt.figure(figsize=(10, 5))
-            # attn_map = attn_map.sum(axis=1)
-            # attn_map = attn_map.detach().cpu().numpy()[0].reshape((32, 32))
-            # fig.add_subplot(1, 2, 1)
-            # plt.imshow(attn_map, cmap='Greys')
-            # plt.colorbar()
-            # fig.add_subplot(1, 2, 2)
-            # plt.imshow(img.detach().cpu().numpy()[0])
-            # plt.title(str(task_id.detach().cpu().numpy()[0]))
-            # plt.show()
+        # if epoch_idx * len(data_loader) + idx > 200:
+        #     fig = plt.figure(figsize=(10, 5))
+        #     # attn_map = attn_map.sum(axis=1)
+        #     print(attn_map.shape)
+        #     attn_map = attn_map.detach().cpu().numpy()[0][0][4:].reshape((16, 16))
+        #     fig.add_subplot(1, 2, 1)
+        #     # plt.imshow(attn_map, cmap='Greys')
+        #     plt.imshow(attn_map)
+        #     plt.colorbar()
+        #     fig.add_subplot(1, 2, 2)
+        #     plt.imshow(img.detach().cpu().numpy()[0])
+        #     plt.title(str(task_id.detach().cpu().numpy()[0]))
+        #     plt.show()
 
-            # plt.close()
-            # plt.cla()
 
         # if global_step > 1000:
         #     fig = plt.figure(figsize=(10, 5))
@@ -182,7 +182,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
 def main(writer, name, batch_size=144):
     ckpt_path = r'/share/yzhou298'
-    save_ckpt = False
+    save_ckpt = True
     add_displacement = True
     accumulate_angles = False
 
@@ -213,7 +213,7 @@ def main(writer, name, batch_size=144):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train11-3-supervised-attn'
+    name = 'train11-3-supervised-attn5-bs144'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

@@ -81,12 +81,14 @@ def train(writer, name, epoch_idx, data_loader, model,
             # print(f'epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}')
             # print(displacement.detach().cpu().numpy()[0], displacement_pred.detach().cpu().numpy()[0])
             print(task_id.detach().cpu().numpy()[0], target_position.detach().cpu().numpy()[0])
-            # if epoch_idx * len(data_loader) + idx > 600:
+            # if epoch_idx * len(data_loader) + idx > 300:
             #     fig = plt.figure(figsize=(10, 5))
-            #     attn_map = attn_map.sum(axis=1)
-            #     attn_map = attn_map.detach().cpu().numpy()[0].reshape((32, 32))
+            #     print(attn_map.shape)
+            #     attn_map = attn_map.sum(axis=1).detach().cpu().numpy()[0][0].reshape((32, 32))
+            #     # attn_map = attn_map.detach().cpu().numpy()[0].reshape((32, 32))
             #     fig.add_subplot(1, 2, 1)
-            #     plt.imshow(attn_map, cmap='Greys')
+            #     # plt.imshow(attn_map, cmap='Greys')
+            #     plt.imshow(attn_map)
             #     plt.colorbar()
             #     fig.add_subplot(1, 2, 2)
             #     plt.imshow(img.detach().cpu().numpy()[0])
@@ -105,7 +107,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
 def main(writer, name, batch_size=128):
     ckpt_path = r'/share/yzhou298'
-    save_ckpt = True
+    save_ckpt = False
     add_displacement = True
 
     # load data
@@ -133,7 +135,7 @@ def main(writer, name, batch_size=128):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train9-8-attn2-detr2-adding-joint'
+    name = 'train9-8-attn2-detr2-adding-joint-later'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)
