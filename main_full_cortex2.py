@@ -303,8 +303,8 @@ def main(writer, name, batch_size=128):
     # load model
     model = Backbone(128, 2, 3, 192, add_displacement=add_displacement)
     model = model.to(device)
-    optimizer = optim.AdamW(model.parameters(), weight_decay=1)
-    # optimizer = optim.Adam(model.parameters())
+    # optimizer = optim.AdamW(model.parameters(), weight_decay=1)
+    optimizer = optim.Adam(model.parameters())
     criterion = nn.MSELoss()
 
     # train n epoches
@@ -316,7 +316,7 @@ def main(writer, name, batch_size=128):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train14-1-full-cortex-all-losses-attn-head8-more-supervision-clip-grad-weight-decay1'
+    name = 'train14-2-full-cortex-single-layer-recurrent-all-losses-attn-head8-more-supervision-clip-grad-weight-decay-0'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)
