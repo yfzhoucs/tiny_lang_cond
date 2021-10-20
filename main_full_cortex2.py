@@ -27,6 +27,7 @@ def pixel_position_to_attn_index(pixel_position, attn_map_offset=4):
 def train(writer, name, epoch_idx, data_loader, model, 
     optimizer, criterion, ckpt_path, save_ckpt, loss_stage,
     print_attention_map=False, curriculum_learning=False, supervised_attn=False):
+    model.train()
     criterion2 = nn.CrossEntropyLoss()
     loss_array = np.array([100000.0] * 50)
     for idx, (img, joints, task_id, end_position, object_list, target_position, next_joints, displacement) in enumerate(data_loader):
@@ -44,7 +45,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
         # Forward pass
         optimizer.zero_grad()
-        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, joints_pred = model(img, joints, task_id)
+        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred = model(img, joints, task_id)
         # target_position_pred, attn_map = model(img, joints, task_id)
         loss1 = criterion(action_pred, next_joints)
         loss5 = criterion(target_position_pred, target_position)
@@ -66,9 +67,9 @@ def train(writer, name, epoch_idx, data_loader, model,
         displacement_attn = attn_map3[:, 2, 0]
         loss_displacement_attn = criterion(displacement_attn, torch.ones(attn_map3.shape[0], 1, dtype=torch.float32).to(device))
 
-        # # Attention Supervision for Joints Task
-        # displacement_attn = attn_map3[:, 3, 0]
-        # loss_displacement_attn = criterion(displacement_attn, torch.ones(attn_map3.shape[0], 1, dtype=torch.float32).to(device))
+        # Attention Supervision for Joints Task
+        joints_attn = attn_map3[:, 3, -2]
+        loss_joints_attn = criterion(displacement_attn, torch.ones(attn_map3.shape[0], 1, dtype=torch.float32).to(device))
 
         # Calculate loss
         if curriculum_learning:
@@ -82,7 +83,19 @@ def train(writer, name, epoch_idx, data_loader, model,
             elif loss_stage == 0:
                 if supervised_attn:
                     # loss = loss5 + loss_attn_target_position * 5000# + loss_attn_target * 5000
-                    loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000# + loss_displacement_attn * 5000
+
+                    #######################################################
+                    # This line works perfectly for target position prediction and displacement prediction
+                    # loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000# + loss_displacement_attn * 5000
+                    #######################################################
+
+                    #######################################################
+                    # This line works well for tar pos, disp and joints. Removing the last attn loss will make it converge faster
+                    # loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000 + loss7 + loss_joints_attn * 5000
+                    #######################################################
+
+                    loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000 + loss7 + loss1
+
                     print(loss_attn_target.item() * 5000, loss_attn_target_position.item() * 5000)
                 else:
                     loss = loss5
@@ -102,7 +115,7 @@ def train(writer, name, epoch_idx, data_loader, model,
             if not supervised_attn:
                 loss = loss1 + loss5 + loss6 + loss7
             else:
-                loss = loss1 + loss5 + loss6 + loss7 + loss_attn_target_position * 5000
+                loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000 + loss7 + loss1
             loss_array[global_step % len(loss_array)] = loss.item()
         
         # Backward pass
@@ -145,53 +158,55 @@ def train(writer, name, epoch_idx, data_loader, model,
 
 
 def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_size, print_attention_map=False):
-    loss = 0
-    idx = 0
-    for img, joints, task_id, end_position, object_list, target_position, next_joints, displacement in data_loader:
-        global_step = epoch_idx * len(data_loader) + idx
+    with torch.no_grad():
+        model.eval()
+        loss = 0
+        idx = 0
+        for img, joints, task_id, end_position, object_list, target_position, next_joints, displacement in data_loader:
+            global_step = epoch_idx * len(data_loader) + idx
 
-        # Prepare data
-        img = img.to(device)
-        joints = joints.to(device)
-        task_id = task_id.to(device)
-        end_position = end_position.to(device)
-        object_list = object_list.to(device)
-        target_position = target_position.to(device)
-        next_joints = next_joints.to(device)
-        displacement = displacement.to(device)
+            # Prepare data
+            img = img.to(device)
+            joints = joints.to(device)
+            task_id = task_id.to(device)
+            end_position = end_position.to(device)
+            object_list = object_list.to(device)
+            target_position = target_position.to(device)
+            next_joints = next_joints.to(device)
+            displacement = displacement.to(device)
 
-        # Forward pass
-        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, joints_pred = model(img, joints, task_id)
-        # target_position_pred, attn_map = model(img, joints, task_id)
-        loss1 = criterion(action_pred, next_joints)
-        loss5 = criterion(target_position_pred, target_position)
-        loss6 = criterion(displacement_pred, displacement)
-        loss7 = criterion(joints_pred, joints)
-        loss += loss1.item()
+            # Forward pass
+            action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred = model(img, joints, task_id)
+            # target_position_pred, attn_map = model(img, joints, task_id)
+            loss1 = criterion(action_pred, next_joints)
+            loss5 = criterion(target_position_pred, target_position)
+            loss6 = criterion(displacement_pred, displacement)
+            loss7 = criterion(joints_pred, joints)
+            loss += loss1.item()
 
-        # Print Attention Map
-        if print_attention_map:
-            if epoch_idx * len(data_loader) + idx > 200:
-                fig = plt.figure(figsize=(10, 5))
-                # attn_map = attn_map.sum(axis=1)
-                print(attn_map.shape)
-                attn_map = attn_map.detach().cpu().numpy()[0][0][4:].reshape((16, 16))
-                fig.add_subplot(1, 2, 1)
-                plt.imshow(attn_map)
-                plt.colorbar()
-                fig.add_subplot(1, 2, 2)
-                plt.imshow(img.detach().cpu().numpy()[0])
-                plt.title(str(task_id.detach().cpu().numpy()[0]))
-                plt.show()
+            # Print Attention Map
+            if print_attention_map:
+                if epoch_idx * len(data_loader) + idx > 200:
+                    fig = plt.figure(figsize=(10, 5))
+                    # attn_map = attn_map.sum(axis=1)
+                    print(attn_map.shape)
+                    attn_map = attn_map.detach().cpu().numpy()[0][0][4:].reshape((16, 16))
+                    fig.add_subplot(1, 2, 1)
+                    plt.imshow(attn_map)
+                    plt.colorbar()
+                    fig.add_subplot(1, 2, 2)
+                    plt.imshow(img.detach().cpu().numpy()[0])
+                    plt.title(str(task_id.detach().cpu().numpy()[0]))
+                    plt.show()
 
-        idx += 1
+            idx += 1
 
-        # Print
-        print(f'test: epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}')
+            # Print
+            print(f'test: epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}')
 
-    # Log
-    loss /= idx
-    writer.add_scalar('test loss', loss, global_step=epoch_idx * train_dataset_size)
+        # Log
+        loss /= idx
+        writer.add_scalar('test loss', loss, global_step=epoch_idx * train_dataset_size)
 
 
 def main(writer, name, batch_size=128):
@@ -200,7 +215,7 @@ def main(writer, name, batch_size=128):
     add_displacement = True
     accumulate_angles = False
     supervised_attn = True
-    curriculum_learning = True
+    curriculum_learning = False
     print_attention_map = False
 
     # load data
@@ -229,20 +244,20 @@ def main(writer, name, batch_size=128):
     # load model
     model = Backbone(128, 2, 3, 192, add_displacement=add_displacement)
     model = model.to(device)
-    # optimizer = optim.AdamW(model.parameters(), weight_decay=1)
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.AdamW(model.parameters())
+    # optimizer = optim.Adam(model.parameters())
     criterion = nn.MSELoss()
 
     # train n epoches
     loss_stage = 0
-    for i in range(50):
+    for i in range(500):
         loss_stage = train(writer, name, i, data_loader_train, model, optimizer, 
             criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=print_attention_map)
-        # test(writer, name, i + 1, data_loader_test, model, criterion, len(data_loader_train))
+        test(writer, name, i + 1, data_loader_test, model, criterion, len(data_loader_train))
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train14-1-full-cortex-target-pos-displacement'
+    name = 'train14-1-full-cortex-all-losses-attn-head8'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)
