@@ -44,7 +44,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
         # Forward pass
         optimizer.zero_grad()
-        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, joints_pred = model(img, joints, task_id)
+        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, joints_pred = model(img, joints, task_id)
         # target_position_pred, attn_map = model(img, joints, task_id)
         loss1 = criterion(action_pred, next_joints)
         loss5 = criterion(target_position_pred, target_position)
@@ -52,12 +52,23 @@ def train(writer, name, epoch_idx, data_loader, model,
         loss7 = criterion(joints_pred, joints)
         # loss8 = criterion2(task_pred, task_id)
 
+        # Attention Supervison for Target Position Task
         target_attn = attn_map[:, 0, -1]
         # target_attn = torch.gather(attn_map[:, -1, :], 1, pixel_position_to_attn_index(target_position, attn_map_offset=4))
         loss_attn_target = criterion(target_attn, torch.ones(attn_map.shape[0], 1, dtype=torch.float32).to(device))
         target_position_attn = torch.gather(attn_map2[:, 0, :], 1, pixel_position_to_attn_index(target_position, attn_map_offset=4))
         # target_position_attn = attn_map2[:, 0, -1]
         loss_attn_target_position = criterion(target_position_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device))
+
+        # Attention Supervision for Displacement Task
+        end_effector_attn = torch.gather(attn_map2[:, 2, :], 1, pixel_position_to_attn_index(end_position, attn_map_offset=4))
+        loss_end_effector_attn = criterion(end_effector_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device))
+        displacement_attn = attn_map3[:, 2, 0]
+        loss_displacement_attn = criterion(displacement_attn, torch.ones(attn_map3.shape[0], 1, dtype=torch.float32).to(device))
+
+        # # Attention Supervision for Joints Task
+        # displacement_attn = attn_map3[:, 3, 0]
+        # loss_displacement_attn = criterion(displacement_attn, torch.ones(attn_map3.shape[0], 1, dtype=torch.float32).to(device))
 
         # Calculate loss
         if curriculum_learning:
@@ -71,7 +82,7 @@ def train(writer, name, epoch_idx, data_loader, model,
             elif loss_stage == 0:
                 if supervised_attn:
                     # loss = loss5 + loss_attn_target_position * 5000# + loss_attn_target * 5000
-                    loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5
+                    loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000# + loss_displacement_attn * 5000
                     print(loss_attn_target.item() * 5000, loss_attn_target_position.item() * 5000)
                 else:
                     loss = loss5
@@ -150,7 +161,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
         displacement = displacement.to(device)
 
         # Forward pass
-        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, joints_pred = model(img, joints, task_id)
+        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, joints_pred = model(img, joints, task_id)
         # target_position_pred, attn_map = model(img, joints, task_id)
         loss1 = criterion(action_pred, next_joints)
         loss5 = criterion(target_position_pred, target_position)
@@ -231,7 +242,7 @@ def main(writer, name, batch_size=128):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train14-1-full-cortex'
+    name = 'train14-1-full-cortex-target-pos-displacement'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

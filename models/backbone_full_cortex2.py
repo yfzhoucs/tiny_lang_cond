@@ -259,6 +259,7 @@ class Backbone(nn.Module):
         self.position_embed = nn.Embedding(262, embedding_size)
         self.attn = nn.MultiheadAttention(embed_dim=embedding_size, num_heads=8, device=device, batch_first=True)
         self.attn2 = nn.MultiheadAttention(embed_dim=embedding_size, num_heads=8, device=device, batch_first=True)
+        self.attn3 = nn.MultiheadAttention(embed_dim=embedding_size, num_heads=8, device=device, batch_first=True)
         # self.status_embed_to_qkv = []
         # for i in range(3):
         #     self.status_embed_to_qkv.append(nn.Sequential(
@@ -404,14 +405,19 @@ class Backbone(nn.Module):
         cortex_key2 = cortex_key2 + segment_embed# + position_embed
         cortex_value2 = cortex_value2 + segment_embed# + position_embed
         state_embedding2, attn_map2 = self.attn2(cortex_query2, cortex_key2, cortex_value2, need_weights=True, attn_mask=attn_mask)
+        cortex_query3, cortex_key3, cortex_value3 = self._update_cortex_status_(state_embedding2, perception_query, perception_key, perception_value)
+        cortex_query3 = cortex_query3 + segment_embed
+        cortex_key3 = cortex_key3 + segment_embed
+        cortex_value3 = cortex_value3 + segment_embed
+        state_embedding3, attn_map3 = self.attn3(cortex_query3, cortex_key3, cortex_value3, need_weights=True, attn_mask=attn_mask)
         # state_embedding2, attn_map2 = self.attn2(cortex_query, cortex_key, cortex_value, need_weights=True, attn_mask=attn_mask)
 
         # Post-attn operations. Predict the results from the state embedding
         target_position_pred = self.embed_to_target_position(state_embedding2[:,0,:])
-        joints_pred = self.joints_predictor(state_embedding2[:,3,:])
+        joints_pred = self.joints_predictor(state_embedding3[:,3,:])
         action_pred = self.controller(state_embedding2[:,1,:])
 
         if self.add_displacement:
-            displacement_pred = self.embed_to_displacement(state_embedding2[:, 2, :])
-            return action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, joints_pred
+            displacement_pred = self.embed_to_displacement(state_embedding3[:, 2, :])
+            return action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, joints_pred
         return action_pred, target_position_pred, attn_map, joints_pred
