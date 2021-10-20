@@ -480,7 +480,7 @@ class ComprehensiveRobotDataset(Dataset):
     def __getitem__(self, index):
         img = torch.tensor(io.imread(self.img_paths[index])[:,:,:3] / 255, dtype=torch.float32)
         joints = torch.tensor(self.joints[index], dtype=torch.float32)
-        task_id = torch.tensor(self.instructions[index], dtype=torch.int32)
+        task_id = torch.tensor(self.instructions[index], dtype=torch.int64)
         end_position = torch.tensor(self.end_positions[index], dtype=torch.float32)
         object_list = torch.tensor(self.object_lists[index], dtype=torch.float32)
         target_position = torch.tensor(self.target_positions[index], dtype=torch.float32)

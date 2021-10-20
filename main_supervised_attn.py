@@ -213,7 +213,7 @@ def main(writer, name, batch_size=144):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train11-3-supervised-attn5-bs144'
+    name = 'train11-4-supervised-attn5-bs144'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

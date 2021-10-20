@@ -1,0 +1,6 @@
+torch
+numpy
+transformers
+tensorboard
+matplotlib
+scikit-image
