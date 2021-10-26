@@ -318,7 +318,7 @@ def main(writer, name, batch_size=128):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train15-1-cortex-injection'
+    name = 'train15-1-cortex-injection-seperate-request-queries'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)

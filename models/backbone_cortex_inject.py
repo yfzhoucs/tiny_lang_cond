@@ -264,14 +264,29 @@ class Backbone(nn.Module):
         self.attn2 = nn.MultiheadAttention(embed_dim=embedding_size, num_heads=8, device=device, batch_first=True)
         self.attn3 = nn.MultiheadAttention(embed_dim=embedding_size, num_heads=8, device=device, batch_first=True)
         self.attn4 = nn.MultiheadAttention(embed_dim=embedding_size, num_heads=8, device=device, batch_first=True)
-        # self.status_embed_to_qkv = []
+        # self.status_embed_to_q = []
         # for i in range(3):
-        #     self.status_embed_to_qkv.append(nn.Sequential(
+        #     self.status_embed_to_q.append(nn.Sequential(
         #         nn.Linear(embedding_size, embedding_size),
         #         nn.LayerNorm(embedding_size),
         #         nn.ReLU()
         #     ))
         # self.status_embed_to_qkv = nn.ModuleList(self.status_embed_to_qkv)
+        # self.task_request2 = nn.Parameter(torch.rand(embedding_size))
+        # self.action_request2 = nn.Parameter(torch.rand(embedding_size))
+        # self.displacement_request2 = nn.Parameter(torch.rand(embedding_size))
+        # self.joints_request2 = nn.Parameter(torch.rand(embedding_size))
+        # self.task_request3 = nn.Parameter(torch.rand(embedding_size))
+        # self.action_request3 = nn.Parameter(torch.rand(embedding_size))
+        # self.displacement_request3 = nn.Parameter(torch.rand(embedding_size))
+        # self.joints_request3 = nn.Parameter(torch.rand(embedding_size))
+        # self.task_request4 = nn.Parameter(torch.rand(embedding_size))
+        # self.action_request4 = nn.Parameter(torch.rand(embedding_size))
+        # self.displacement_request4 = nn.Parameter(torch.rand(embedding_size))
+        # self.joints_request4 = nn.Parameter(torch.rand(embedding_size))
+        self.cortex2_request = nn.Parameter(torch.rand(4, embedding_size))
+        self.cortex3_request = nn.Parameter(torch.rand(4, embedding_size))
+        self.cortex4_request = nn.Parameter(torch.rand(4, embedding_size))
 
         # Post Attention: action prediction
         self.controller = Controller(embedding_size, num_joints * 2)
@@ -347,13 +362,15 @@ class Backbone(nn.Module):
         requests_vs = torch.cat(requests_vs, dim=1)
         return requests_qs, requests_ks, requests_vs
 
-    def _status_embed_to_qkv_(self, status_embed):
-        last_subjective_part_query, last_subjective_part_key, last_subjective_part_value = self._embed_to_qkv_(status_embed, self.status_embed_to_qkv)
-        return last_subjective_part_query, last_subjective_part_key, last_subjective_part_value
+    def _status_embed_to_qkv_(self, status_embed, layer):
+        last_subjective_part_query = self.status_embed_to_qkv[layer](status_embed)
+        return last_subjective_part_query, status_embed, status_embed
 
-    def _update_cortex_status_(self, last_state_embed, perception_query, perception_key, perception_value):
+    def _update_cortex_status_(self, last_state_embed, subject_request_query, perception_query, perception_key, perception_value):
         last_subjective_part = last_state_embed[:, :4, :]
         # last_subjective_part_query, last_subjective_part_key, last_subjective_part_value = self._status_embed_to_qkv_(last_subjective_part)
+        # last_subjective_part_query = torch.cat((), dim=1)
+        # last_subjective_part_query, last_subjective_part_key, last_subjective_part_value = subject_request_query.unsqueeze(0).repeat(last_state_embed.shape[0], 1, 1), last_subjective_part, last_subjective_part
         last_subjective_part_query, last_subjective_part_key, last_subjective_part_value = last_subjective_part, last_subjective_part, last_subjective_part
         cortex_query = torch.cat((last_subjective_part_query, perception_query), dim=1)
         cortex_key = torch.cat((last_subjective_part_key, perception_value), dim=1)
@@ -411,21 +428,21 @@ class Backbone(nn.Module):
         cortex_value = cortex_value + segment_embed
         state_embedding, attn_map = self.attn(cortex_query, cortex_key, cortex_value, need_weights=True, attn_mask=attn_mask)
 
-        cortex_query2, cortex_key2, cortex_value2 = self._update_cortex_status_(state_embedding, perception_query, perception_key, perception_value)
+        cortex_query2, cortex_key2, cortex_value2 = self._update_cortex_status_(state_embedding, self.cortex2_request, perception_query, perception_key, perception_value)
         segment_embed = self._get_segment_embed_(batch_size=img.shape[0], layer=1)
         cortex_query2 = cortex_query2 + segment_embed
         cortex_key2 = cortex_key2 + segment_embed
         cortex_value2 = cortex_value2 + segment_embed
         state_embedding2, attn_map2 = self.attn(cortex_query2, cortex_key2, cortex_value2, need_weights=True, attn_mask=attn_mask)
         
-        cortex_query3, cortex_key3, cortex_value3 = self._update_cortex_status_(state_embedding2, perception_query, perception_key, perception_value)
+        cortex_query3, cortex_key3, cortex_value3 = self._update_cortex_status_(state_embedding2, self.cortex3_request, perception_query, perception_key, perception_value)
         segment_embed = self._get_segment_embed_(batch_size=img.shape[0], layer=1)
         cortex_query3 = cortex_query3 + segment_embed
         cortex_key3 = cortex_key3 + segment_embed
         cortex_value3 = cortex_value3 + segment_embed
         state_embedding3, attn_map3 = self.attn(cortex_query3, cortex_key3, cortex_value3, need_weights=True, attn_mask=attn_mask)
         
-        cortex_query4, cortex_key4, cortex_value4 = self._update_cortex_status_(state_embedding3, perception_query, perception_key, perception_value)
+        cortex_query4, cortex_key4, cortex_value4 = self._update_cortex_status_(state_embedding3, self.cortex4_request, perception_query, perception_key, perception_value)
         segment_embed = self._get_segment_embed_(batch_size=img.shape[0], layer=1)
         cortex_query4 = cortex_query4 + segment_embed
         cortex_key4 = cortex_key4 + segment_embed

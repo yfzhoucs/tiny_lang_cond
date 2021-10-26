@@ -403,20 +403,19 @@ class Backbone(nn.Module):
         cortex_query = torch.cat((requests_qs, perception_query), dim=1)
         cortex_key = torch.cat((requests_ks, perception_key), dim=1)
         cortex_value = torch.cat((requests_vs, perception_value), dim=1)
-        segment_embed = self._get_segment_embed_(batch_size=img.shape[0], layer=1)
-        position_embed = self._get_position_embed_(batch_size=img.shape[0])
-        cortex_query = cortex_query + segment_embed# + position_embed
-        cortex_key = cortex_key + segment_embed# + position_embed
-        cortex_value = cortex_value + segment_embed# + position_embed
 
         # Attention itself
+        segment_embed = self._get_segment_embed_(batch_size=img.shape[0], layer=1)
+        cortex_query = cortex_query + segment_embed
+        cortex_key = cortex_key + segment_embed
+        cortex_value = cortex_value + segment_embed
         state_embedding, attn_map = self.attn(cortex_query, cortex_key, cortex_value, need_weights=True, attn_mask=attn_mask)
 
         cortex_query2, cortex_key2, cortex_value2 = self._update_cortex_status_(state_embedding, perception_query, perception_key, perception_value)
         segment_embed = self._get_segment_embed_(batch_size=img.shape[0], layer=1)
-        cortex_query2 = cortex_query2 + segment_embed# + position_embed
-        cortex_key2 = cortex_key2 + segment_embed# + position_embed
-        cortex_value2 = cortex_value2 + segment_embed# + position_embed
+        cortex_query2 = cortex_query2 + segment_embed
+        cortex_key2 = cortex_key2 + segment_embed
+        cortex_value2 = cortex_value2 + segment_embed
         state_embedding2, attn_map2 = self.attn(cortex_query2, cortex_key2, cortex_value2, need_weights=True, attn_mask=attn_mask)
         
         cortex_query3, cortex_key3, cortex_value3 = self._update_cortex_status_(state_embedding2, perception_query, perception_key, perception_value)
@@ -432,7 +431,6 @@ class Backbone(nn.Module):
         cortex_key4 = cortex_key4 + segment_embed
         cortex_value4 = cortex_value4 + segment_embed
         state_embedding4, attn_map4 = self.attn(cortex_query4, cortex_key4, cortex_value4, need_weights=True, attn_mask=attn_mask)
-        # state_embedding2, attn_map2 = self.attn2(cortex_query, cortex_key, cortex_value, need_weights=True, attn_mask=attn_mask)
 
         # Post-attn operations. Predict the results from the state embedding
         target_position_pred = self.embed_to_target_position(state_embedding2[:,0,:])

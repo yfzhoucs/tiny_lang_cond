@@ -64,7 +64,7 @@ def train(writer, name, epoch_idx, data_loader, model,
         # Attention Supervision for Displacement Task
         end_effector_attn = torch.gather(attn_map2[:, 2, :], 1, pixel_position_to_attn_index(end_position, attn_map_offset=4))
         loss_end_effector_attn = criterion(end_effector_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device))
-        displacement_attn = attn_map3[:, 2, 0]
+        displacement_attn = attn_map3[:, 2, 0] + attn_map3[:, 2, 2]
         loss_displacement_attn = criterion(displacement_attn, torch.ones(attn_map3.shape[0], 1, dtype=torch.float32).to(device))
 
         # Attention Supervision for Joints Task
@@ -87,7 +87,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
                     #######################################################
                     # This line works perfectly for target position prediction and displacement prediction
-                    loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000# + loss_displacement_attn * 5000
+                    loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000 + loss_displacement_attn * 5000
                     #######################################################
 
                     #######################################################
@@ -97,7 +97,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
                     # loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000 + loss7 + loss1
 
-                    print(loss_attn_target.item() * 5000, loss_attn_target_position.item() * 5000)
+                    print(f'{loss_attn_target.item() * 5000:.2f}, {loss_attn_target_position.item() * 5000:.2f}, {loss_end_effector_attn.item() * 5000:.2f}, {loss_displacement_attn.item() * 5000:.2f}')
                 else:
                     loss = loss5
                 # print(loss5.item())
@@ -137,64 +137,65 @@ def train(writer, name, epoch_idx, data_loader, model,
 
         # Print Attention Map
         if print_attention_map:
-            if epoch_idx * len(data_loader) + idx > 600:
+            if loss_stage == 1:
+            # if epoch_idx * len(data_loader) + idx > 600:
                 attn_map1 = attn_map
                 fig = plt.figure(figsize=(20, 20))
                 # attn_map = attn_map.sum(axis=1)
                 # print(attn_map4.shape)
-                attn_map = attn_map1.detach().cpu().numpy()[0][3][:4].reshape((1, 4))
+                attn_map = attn_map1.detach().cpu().numpy()[0][0][:4].reshape((1, 4))
                 fig.add_subplot(4, 4, 1)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map1.detach().cpu().numpy()[0][3][260:].reshape((1, 2))
+                attn_map = attn_map1.detach().cpu().numpy()[0][0][260:].reshape((1, 2))
                 fig.add_subplot(4, 4, 2)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map1.detach().cpu().numpy()[0][3][4:260].reshape((16, 16))
+                attn_map = attn_map1.detach().cpu().numpy()[0][0][4:260].reshape((16, 16))
                 fig.add_subplot(4, 4, 3)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map2.detach().cpu().numpy()[0][3][:4].reshape((1, 4))
+                attn_map = attn_map2.detach().cpu().numpy()[0][0][:4].reshape((1, 4))
                 fig.add_subplot(4, 4, 5)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map2.detach().cpu().numpy()[0][3][260:].reshape((1, 2))
+                attn_map = attn_map2.detach().cpu().numpy()[0][0][260:].reshape((1, 2))
                 fig.add_subplot(4, 4, 6)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map2.detach().cpu().numpy()[0][3][4:260].reshape((16, 16))
+                attn_map = attn_map2.detach().cpu().numpy()[0][0][4:260].reshape((16, 16))
                 fig.add_subplot(4, 4, 7)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map3.detach().cpu().numpy()[0][3][:4].reshape((1, 4))
+                attn_map = attn_map2.detach().cpu().numpy()[0][2][:4].reshape((1, 4))
                 fig.add_subplot(4, 4, 9)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map3.detach().cpu().numpy()[0][3][260:].reshape((1, 2))
+                attn_map = attn_map2.detach().cpu().numpy()[0][2][260:].reshape((1, 2))
                 fig.add_subplot(4, 4, 10)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map3.detach().cpu().numpy()[0][3][4:260].reshape((16, 16))
+                attn_map = attn_map2.detach().cpu().numpy()[0][2][4:260].reshape((16, 16))
                 fig.add_subplot(4, 4, 11)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map4.detach().cpu().numpy()[0][3][:4].reshape((1, 4))
+                attn_map = attn_map3.detach().cpu().numpy()[0][2][:4].reshape((1, 4))
                 fig.add_subplot(4, 4, 13)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map4.detach().cpu().numpy()[0][3][260:].reshape((1, 2))
+                attn_map = attn_map3.detach().cpu().numpy()[0][2][260:].reshape((1, 2))
                 fig.add_subplot(4, 4, 14)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
-                attn_map = attn_map4.detach().cpu().numpy()[0][3][4:260].reshape((16, 16))
+                attn_map = attn_map3.detach().cpu().numpy()[0][2][4:260].reshape((16, 16))
                 fig.add_subplot(4, 4, 15)
-                plt.imshow(attn_map)
+                plt.imshow(attn_map, vmin=0, vmax=1)
                 plt.colorbar()
                 fig.add_subplot(4, 4, 16)
                 plt.imshow(img.detach().cpu().numpy()[0])
                 plt.title(str(task_id.detach().cpu().numpy()[0]))
-                # plt.show()
-                plt.savefig(f"figs2/attn_map4_{global_step}.png")
+                plt.show()
+                # plt.savefig(f"figs2/attn_map4_{global_step}.png")
                 # print('fig saved')
 
     # Save checkpoint
@@ -266,6 +267,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
         # Log
         loss /= idx
         writer.add_scalar('test loss', loss, global_step=epoch_idx * train_dataset_size)
+        writer.add_scalar('test loss target_position', loss5.item(), global_step=epoch_idx * train_dataset_size)
 
 
 def main(writer, name, batch_size=128):
@@ -275,7 +277,7 @@ def main(writer, name, batch_size=128):
     accumulate_angles = False
     supervised_attn = True
     curriculum_learning = True
-    print_attention_map = False
+    print_attention_map = True
 
     # load data
     dataset_train = ComprehensiveRobotDataset(
@@ -316,7 +318,7 @@ def main(writer, name, batch_size=128):
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train14-2-full-cortex-single-layer-recurrent-all-losses-attn-head8-more-supervision-clip-grad-weight-decay-0'
+    name = 'train14-1-full-cortex-2-'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)
