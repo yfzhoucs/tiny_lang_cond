@@ -2,4 +2,5 @@
 #sudo ~/anaconda3/envs/py37/bin/python comprehensive_visual_encoder.py
 #sudo ~/anaconda3/envs/py37/bin/python main_cat.py
 #sudo ~/anaconda3/envs/py37/bin/python main_detr.py
-sudo ~/anaconda3/envs/py37/bin/python main_supervised_attn.py
+#sudo ~/anaconda3/envs/py37/bin/python main_supervised_attn.py
+sudo ~/anaconda3/envs/py37/bin/python main_cortex_inject.py

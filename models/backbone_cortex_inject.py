@@ -397,7 +397,7 @@ class Backbone(nn.Module):
         position_ids = self.position_embed(position_ids)
         return position_ids
 
-    def forward(self, img, joints, target_id, attn_mask=None):
+    def forward(self, img, joints, target_id, attn_mask=None, injected_target_embed=None):
 
         # Image Pathway
         img_embed_query, img_embed_key, img_embed_value = self._img_pathway_(img)
@@ -427,6 +427,12 @@ class Backbone(nn.Module):
         cortex_key = cortex_key + segment_embed
         cortex_value = cortex_value + segment_embed
         state_embedding, attn_map = self.attn(cortex_query, cortex_key, cortex_value, need_weights=True, attn_mask=attn_mask)
+        target_embed = torch.clone(state_embedding[:, 0, :])
+
+        if injected_target_embed is not None:
+            assert state_embedding[:, 0, :].shape == injected_target_embed.shape
+            injected_target_embed = injected_target_embed.unsqueeze(1)
+            state_embedding = torch.cat((injected_target_embed, state_embedding[:, 1:, :]), dim=1)
 
         cortex_query2, cortex_key2, cortex_value2 = self._update_cortex_status_(state_embedding, self.cortex2_request, perception_query, perception_key, perception_value)
         segment_embed = self._get_segment_embed_(batch_size=img.shape[0], layer=1)
@@ -456,5 +462,66 @@ class Backbone(nn.Module):
 
         if self.add_displacement:
             displacement_pred = self.embed_to_displacement(state_embedding3[:, 2, :])
-            return action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred
-        return action_pred, target_position_pred, attn_map, joints_pred
+            return action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred, target_embed
+        return action_pred, target_position_pred, attn_map, joints_pred, target_embed
+
+# https://github.com/eriklindernoren/PyTorch-GAN/blob/master/implementations/cgan/cgan.py
+class TargetEmbedGenerator(nn.Module):
+    def __init__(self, n_classes, embedding_size):
+        super(TargetEmbedGenerator, self).__init__()
+        self.n_classes = n_classes
+        self.embedding_size = embedding_size
+        self.noise_dim = embedding_size // 10
+
+        self.embed = nn.Embedding(n_classes, embedding_size // 10)
+
+        self.layer1 = nn.Sequential(
+                nn.Linear(embedding_size // 10, embedding_size // 2),
+                nn.BatchNorm1d(embedding_size // 2),
+                nn.SELU())
+
+        self.layer2 = nn.Sequential(
+                nn.Linear(embedding_size // 2, embedding_size),
+                nn.BatchNorm1d(embedding_size),
+                nn.SELU())
+
+        self.layer3 = nn.Sequential(
+                nn.Linear(embedding_size, embedding_size),
+                nn.BatchNorm1d(embedding_size),
+                nn.SELU())
+
+        self.layer4 = nn.Linear(embedding_size, embedding_size)
+
+    def forward(self, label):
+        label = self.embed(label)
+        # x = torch.cat((noise, label), dim=-1)
+        x = self.layer1(label)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        return x
+
+
+class TargetEmbedDiscriminator(nn.Module):
+    def __init__(self, n_classes, embedding_size):
+        super(TargetEmbedDiscriminator, self).__init__()
+
+        self.embed = nn.Embedding(n_classes, embedding_size // 10)
+
+        self.layer1 = nn.Sequential(
+                nn.Linear(embedding_size // 10 + embedding_size, embedding_size // 2),
+                nn.Dropout(0.4),
+                # nn.BatchNorm1d(embedding_size // 2),
+                nn.SELU())
+
+        self.layer2 = nn.Sequential(
+            nn.Linear(embedding_size // 2, 1),
+            nn.Dropout(0.4),
+            nn.Sigmoid())
+
+    def forward(self, embed, label):
+        label = self.embed(label)
+        x = torch.cat((embed, label), dim=-1)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        return x

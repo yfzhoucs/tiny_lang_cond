@@ -1,5 +1,5 @@
 import numpy as np
-from models.backbone_cortex_inject import Backbone
+from models.backbone_cortex_inject import Backbone, TargetEmbedGenerator, TargetEmbedDiscriminator
 from utils.load_data import ComprehensiveRobotDataset
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch
 import os
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 import time
 
 
@@ -24,10 +25,12 @@ def pixel_position_to_attn_index(pixel_position, attn_map_offset=4):
     return index
 
 
-def train(writer, name, epoch_idx, data_loader, model, 
-    optimizer, criterion, ckpt_path, save_ckpt, loss_stage,
+def train(writer, name, epoch_idx, data_loader, model, target_embed_generator, target_embed_discriminator, optimizer, optimizer_generator, optimizer_discriminator, 
+    criterion, ckpt_path, save_ckpt, loss_stage,
     print_attention_map=False, curriculum_learning=False, supervised_attn=False):
     model.train()
+    target_embed_generator.train()
+    target_embed_discriminator.train()
     criterion2 = nn.CrossEntropyLoss()
     loss_array = np.array([100000.0] * 50)
     for idx, (img, joints, task_id, end_position, object_list, target_position, next_joints, displacement) in enumerate(data_loader):
@@ -43,9 +46,12 @@ def train(writer, name, epoch_idx, data_loader, model,
         next_joints = next_joints.to(device)
         displacement = displacement.to(device)
 
+        ##########################################################################
+        # Train the model itself
+        ##########################################################################
         # Forward pass
         optimizer.zero_grad()
-        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred = model(img, joints, task_id)
+        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred, target_embed = model(img, joints, task_id)
         # target_position_pred, attn_map = model(img, joints, task_id)
         loss1 = criterion(action_pred, next_joints)
         loss5 = criterion(target_position_pred, target_position)
@@ -126,13 +132,46 @@ def train(writer, name, epoch_idx, data_loader, model,
         
         # Backward pass
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
-        # torch.nn.utils.clip_grad_value_(model.parameters(), 0.5)
-        optimizer.step()
+        # if loss_stage < 2:
+        if True:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+            # torch.nn.utils.clip_grad_value_(model.parameters(), 0.5)
+            optimizer.step()
+
+        # ##########################################################################
+        # # Train the generator
+        # ##########################################################################
+        # for train_generator_cnt in range(2):
+        #     optimizer_generator.zero_grad()
+        #     noise = torch.randn(target_embed.shape[0], target_embed_generator.noise_dim).to(device)
+        #     fake_target_embed = target_embed_generator(task_id)
+        #     D_fake = target_embed_discriminator(fake_target_embed, task_id)
+        #     G_loss = criterion(D_fake, torch.ones(*D_fake.shape).to(device))
+        #     G_loss.backward()
+        #     optimizer_generator.step()
+
+        # ##########################################################################
+        # # Train the discriminator
+        # ##########################################################################
+        # # D_real_loss
+        # optimizer_discriminator.zero_grad()
+        # D_real = target_embed_discriminator(target_embed.detach(), task_id)
+        # D_real_loss = criterion(D_real, torch.ones(*D_real.shape).to(device))
+        # # D_fake_loss
+        # # noise = torch.randn(target_embed.shape[0], target_embed_generator.noise_dim).to(device)
+        # # fake_target_embed = target_embed_generator(noise, task_id)
+        # D_fake = target_embed_discriminator(fake_target_embed.detach(), task_id)
+        # D_fake_loss = criterion(D_fake, torch.zeros(*D_fake.shape).to(device))
+        # D_loss = D_real_loss + D_fake_loss / 2
+        # D_loss.backward()
+        # optimizer_discriminator.step()
+
+
 
         # Log and print
         writer.add_scalar('train loss', loss.item(), global_step=epoch_idx * len(data_loader) + idx)
         # print(f'epoch {epoch_idx}, step {idx}, stage {loss_stage}, l_all {loss.item():.2f}, l1 {loss1.item():.2f}, l5 {loss5.item():.2f}, l6 {loss6.item():.2f}, l7 {loss7.item():.2f}, l8 {loss8.item():.2f}')
+        # print(f'epoch {epoch_idx}, step {idx}, stage {loss_stage}, l_all {loss.item():.2f}, l1 {loss1.item():.2f}, l5 {loss5.item():.2f}, l6 {loss6.item():.2f}, l7 {loss7.item():.2f}, l_G {G_loss.item():.2f}, l_D {D_loss.item():.2f}')
         print(f'epoch {epoch_idx}, step {idx}, stage {loss_stage}, l_all {loss.item():.2f}, l1 {loss1.item():.2f}, l5 {loss5.item():.2f}, l6 {loss6.item():.2f}, l7 {loss7.item():.2f}')
 
         # Print Attention Map
@@ -206,10 +245,13 @@ def train(writer, name, epoch_idx, data_loader, model,
     return loss_stage
 
 
-def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_size, print_attention_map=False):
+def test(writer, name, epoch_idx, data_loader, model, target_embed_generator, criterion, train_dataset_size, loss_stage, print_attention_map=False, log=True):
     with torch.no_grad():
         model.eval()
+        target_embed_generator.eval()
         loss = 0
+        loss_target_position = 0
+        accu_loss_injected_distance = 0
         idx = 0
         for img, joints, task_id, end_position, object_list, target_position, next_joints, displacement in data_loader:
             global_step = epoch_idx * len(data_loader) + idx
@@ -224,60 +266,150 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
             next_joints = next_joints.to(device)
             displacement = displacement.to(device)
 
-            # Forward pass
-            action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred = model(img, joints, task_id)
+            # Action Loss
+            action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred, target_embed = model(img, joints, task_id)
             # target_position_pred, attn_map = model(img, joints, task_id)
             loss1 = criterion(action_pred, next_joints)
             loss5 = criterion(target_position_pred, target_position)
             loss6 = criterion(displacement_pred, displacement)
             loss7 = criterion(joints_pred, joints)
             loss += loss1.item()
+            loss_target_position += loss5.item()
+
+            # print(task_id)
+            # print(target_embed.shape)
+            embeds = {}
+            for injected_target_id in range(3):
+                indices = (task_id == injected_target_id).nonzero(as_tuple=False).squeeze()
+                # print(indices)
+                embeds[injected_target_id] = target_embed[indices]
+                if idx == 0:
+                    print(injected_target_id, embeds[injected_target_id])
+                embeds[injected_target_id] = torch.mean(embeds[injected_target_id], 0, True).repeat(img.shape[0], 1)
+                # print(embeds[injected_target_id])
+                # print(embeds[injected_target_id].shape)
+                if idx == 0:
+                    print(injected_target_id, embeds[injected_target_id])
+
+
+            # Target Injection Loss
+            loss_injected_distance = 0
+            for injected_target_id in range(3):
+                # noise = torch.randn(target_embed.shape[0], target_embed_generator.noise_dim).to(device)
+                # injected_target_embed = target_embed_generator(torch.ones(target_embed.shape[0], dtype=torch.int64).to(device) * injected_target_id)
+                injected_target_embed = embeds[injected_target_id]
+                action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred, target_embed = model(
+                    img, joints, task_id, injected_target_embed=injected_target_embed)
+                target_position = object_list[:, injected_target_id * 2: injected_target_id * 2 + 2]
+                loss_injected_distance += criterion(target_position_pred.reshape((img.shape[0] * 2, )), target_position.reshape((img.shape[0] * 2, )))
+                print(f'loss of {injected_target_id}', criterion(target_position_pred.reshape((img.shape[0] * 2, )), target_position.reshape((img.shape[0] * 2, ))))
+                # if loss_stage == 2:
+                # if True:
+                    # print(injected_target_id, target_position_pred.detach().cpu().numpy(), target_position.detach().cpu().numpy())
+            loss_injected_distance = loss_injected_distance / 3
+            print(loss_injected_distance)
+            accu_loss_injected_distance += loss_injected_distance.item()
 
             # Print Attention Map
             if print_attention_map:
-                if epoch_idx * len(data_loader) + idx > 1:
-                    fig = plt.figure(figsize=(20, 5))
+                # if True:
+                if loss_stage == 2:
+                # if epoch_idx * len(data_loader) + idx > 1:
+                    attn_map1 = attn_map
+                    fig = plt.figure(figsize=(20, 30))
+                    gs = GridSpec(6, 4)
                     # attn_map = attn_map.sum(axis=1)
-                    print(attn_map4.shape)
-                    attn_map = attn_map4.detach().cpu().numpy()[0][3][:4]
-                    fig.add_subplot(1, 4, 1)
-                    plt.imshow(attn_map)
+                    # print(attn_map4.shape)
+                    attn_map = attn_map1.detach().cpu().numpy()[0][0][:4].reshape((1, 4))
+                    # fig.add_subplot(6, 4, 1)
+                    ax1 = fig.add_subplot(gs[0, 0])
+                    plt.imshow(attn_map, vmin=0, vmax=1)
                     plt.colorbar()
-                    attn_map = attn_map4.detach().cpu().numpy()[0][3][256:]
-                    fig.add_subplot(1, 4, 2)
-                    plt.imshow(attn_map)
+                    attn_map = attn_map1.detach().cpu().numpy()[0][0][260:].reshape((1, 2))
+                    fig.add_subplot(6, 4, 2)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
                     plt.colorbar()
-                    attn_map = attn_map4.detach().cpu().numpy()[0][3][4:260].reshape((16, 16))
-                    fig.add_subplot(1, 4, 3)
-                    plt.imshow(attn_map)
+                    attn_map = attn_map1.detach().cpu().numpy()[0][0][4:260].reshape((16, 16))
+                    fig.add_subplot(6, 4, 3)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
                     plt.colorbar()
-                    fig.add_subplot(1, 4, 4)
+                    attn_map = attn_map2.detach().cpu().numpy()[0][0][:4].reshape((1, 4))
+                    fig.add_subplot(6, 4, 5)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
+                    plt.colorbar()
+                    attn_map = attn_map2.detach().cpu().numpy()[0][0][260:].reshape((1, 2))
+                    fig.add_subplot(6, 4, 6)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
+                    plt.colorbar()
+                    attn_map = attn_map2.detach().cpu().numpy()[0][0][4:260].reshape((16, 16))
+                    fig.add_subplot(6, 4, 7)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
+                    plt.colorbar()
+                    attn_map = attn_map2.detach().cpu().numpy()[0][2][:4].reshape((1, 4))
+                    fig.add_subplot(6, 4, 9)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
+                    plt.colorbar()
+                    attn_map = attn_map2.detach().cpu().numpy()[0][2][260:].reshape((1, 2))
+                    fig.add_subplot(6, 4, 10)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
+                    plt.colorbar()
+                    attn_map = attn_map2.detach().cpu().numpy()[0][2][4:260].reshape((16, 16))
+                    fig.add_subplot(6, 4, 11)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
+                    plt.colorbar()
+                    attn_map = attn_map3.detach().cpu().numpy()[0][2][:4].reshape((1, 4))
+                    fig.add_subplot(6, 4, 13)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
+                    plt.colorbar()
+                    attn_map = attn_map3.detach().cpu().numpy()[0][2][260:].reshape((1, 2))
+                    fig.add_subplot(6, 4, 14)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
+                    plt.colorbar()
+                    attn_map = attn_map3.detach().cpu().numpy()[0][2][4:260].reshape((16, 16))
+                    fig.add_subplot(6, 4, 15)
+                    plt.imshow(attn_map, vmin=0, vmax=1)
+                    plt.colorbar()
+                    fig.add_subplot(6, 4, 16)
                     plt.imshow(img.detach().cpu().numpy()[0])
                     plt.title(str(task_id.detach().cpu().numpy()[0]))
-                    # plt.show()
-                    plt.savefig(f"figs/attn_map4_{global_step}.png")
-                    print('fig saved')
+                    # fig.add_subplot(6, 1, 5)
+                    fig.add_subplot(gs[4, :])
+                    plt.imshow(injected_target_embed.detach().cpu()[0:1].repeat(10, 1).numpy())
+                    plt.colorbar()
+                    # fig.add_subplot(6, 1, 6)
+                    fig.add_subplot(gs[5, :])
+                    print(target_embed.detach().cpu().numpy()[0:1].shape)
+                    plt.imshow(target_embed.detach().cpu()[0:1].repeat(10, 1).numpy())
+                    plt.colorbar()
+                    plt.show()
+
+                    # plt.savefig(f"figs/attn_map4_{global_step}.png")
+                    # print('fig saved')
 
 
             idx += 1
 
             # Print
-            print(f'test: epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}')
+            print(f'test: epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}, loss_inject {loss_injected_distance.item():.2f}')
 
         # Log
-        loss /= idx
-        writer.add_scalar('test loss', loss, global_step=epoch_idx * train_dataset_size)
-        writer.add_scalar('test loss target_position', loss5.item(), global_step=epoch_idx * train_dataset_size)
+        if log:
+            loss /= idx
+            loss_target_position /= idx
+            accu_loss_injected_distance /= idx
+            writer.add_scalar('test loss', loss, global_step=epoch_idx * train_dataset_size)
+            writer.add_scalar('test loss target_position', loss_target_position, global_step=epoch_idx * train_dataset_size)
+            writer.add_scalar('test loss injected target embed -- target position error', accu_loss_injected_distance, global_step=epoch_idx * train_dataset_size)
 
 
-def main(writer, name, batch_size=128):
+def main(writer, name, batch_size=96):
     ckpt_path = r'/share/yzhou298'
     save_ckpt = False
     add_displacement = True
     accumulate_angles = False
     supervised_attn = True
     curriculum_learning = True
-    print_attention_map = True
+    print_attention_map = False
 
     # load data
     dataset_train = ComprehensiveRobotDataset(
@@ -301,24 +433,31 @@ def main(writer, name, batch_size=128):
         add_displacement=add_displacement,
         accumulate_angles=accumulate_angles)
     data_loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size,
-                                          shuffle=False, num_workers=2)
+                                          shuffle=True, num_workers=2)
     # load model
     model = Backbone(128, 2, 3, 192, add_displacement=add_displacement)
+    target_embed_generator = TargetEmbedGenerator(3, 192)
+    target_embed_discriminator = TargetEmbedDiscriminator(3, 192)
     model = model.to(device)
+    target_embed_generator = target_embed_generator.to(device)
+    target_embed_discriminator = target_embed_discriminator.to(device)
     # optimizer = optim.AdamW(model.parameters(), weight_decay=1)
     optimizer = optim.Adam(model.parameters())
+    optimizer_generator = optim.Adam(target_embed_generator.parameters())
+    optimizer_discriminator = optim.Adam(target_embed_discriminator.parameters())
     criterion = nn.MSELoss()
 
     # train n epoches
     loss_stage = 0
+    # model.load_state_dict(torch.load('/share/yzhou298/train15-2-cortex-injection-gan-target-embed-visualize/3.pth'))
     for i in range(500):
-        loss_stage = train(writer, name, i, data_loader_train, model, optimizer, 
+        loss_stage = train(writer, name, i, data_loader_train, model, target_embed_generator, target_embed_discriminator, optimizer, optimizer_generator, optimizer_discriminator, 
             criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=print_attention_map)
-        test(writer, name, i + 1, data_loader_test, model, criterion, len(data_loader_train))
+        test(writer, name, i + 1, data_loader_test, model, target_embed_generator, criterion, len(data_loader_train), loss_stage, print_attention_map=False, log=True)
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train15-1-cortex-injection-seperate-request-queries'
+    name = 'train15-3-cortex-injection-gan-target-embed-visualize'
     writer = SummaryWriter('runs/' + name)
 
     main(writer, name)
