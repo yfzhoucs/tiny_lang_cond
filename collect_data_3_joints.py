@@ -121,7 +121,7 @@ def even_distribution_in_a_circle(circle_radius=50):
 
 def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disable_window=True):
     # Create an environment
-    robot = reach.SimpleRobot([30., 30., 30.])
+    robot = reach.SimpleRobot([30., 20., 10.])
     object_geom_list = reach.ObjectList([
         # [x, y, radius, (r, g, b)]
         [*even_distribution_in_a_circle(circle_radius=50), 5., (1, 0, 0)],
@@ -181,10 +181,10 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disabl
 if __name__ == '__main__':
     screen_width = 128
     screen_height = 128
-    data_dir = './data_position_3_joints/'
+    data_dir = './data_position_3_joints_30_20_10_2000/'
 
     if not os.path.isdir(data_dir):
         os.mkdir(data_dir)
-    for i in range(0, 5):
+    for i in range(0000, 2000):
         data_id = i
         collect_sequence_data(data_id, screen_width, screen_height, data_dir)
