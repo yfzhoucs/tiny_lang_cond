@@ -6,16 +6,16 @@ import os
 import matplotlib.pyplot as plt
 
 
-# https://www.titanwolf.org/Network/q/8f901b91-0923-43ed-90fd-bf5f0143d9a1/y
-def disable_view_window():
-    from gym.envs.classic_control import rendering
-    org_constructor = rendering.Viewer.__init__
+# # https://www.titanwolf.org/Network/q/8f901b91-0923-43ed-90fd-bf5f0143d9a1/y
+# def disable_view_window():
+#     from gym.envs.classic_control import rendering
+#     org_constructor = rendering.Viewer.__init__
 
-    def constructor(self, *args, **kwargs):
-        org_constructor(self, *args, **kwargs)
-        self.window.set_visible(visible=False)
+#     def constructor(self, *args, **kwargs):
+#         org_constructor(self, *args, **kwargs)
+#         self.window.set_visible(visible=False)
 
-    rendering.Viewer.__init__ = constructor
+#     rendering.Viewer.__init__ = constructor
 
 
 def l2(pos1, pos2):
@@ -132,8 +132,8 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disabl
         robot=robot, object_list=object_geom_list,
         screen_width=screen_width, screen_height=screen_height)
 
-    if disable_window:
-        disable_view_window()
+    # if disable_window:
+    #     disable_view_window()
     object_list = object_geom_list.get_objects()
 
     # Select a goal
@@ -185,6 +185,6 @@ if __name__ == '__main__':
 
     if not os.path.isdir(data_dir):
         os.mkdir(data_dir)
-    for i in range(0000, 2000):
+    for i in range(978, 1000):
         data_id = i
         collect_sequence_data(data_id, screen_width, screen_height, data_dir)

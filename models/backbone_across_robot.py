@@ -441,5 +441,5 @@ class Backbone(nn.Module):
         if self.add_displacement:
             displacement_pred = self.embed_to_displacement(state_embedding3[:, 2, :])
             # displacement_pred = self.embed_to_displacement(state_embedding2[:,0,:])
-            return action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred
+            return action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred, state_embedding4[:,1,:]
         return action_pred, target_position_pred, attn_map, joints_pred

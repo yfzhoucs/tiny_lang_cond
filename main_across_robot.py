@@ -27,7 +27,7 @@ def pixel_position_to_attn_index(pixel_position, attn_map_offset=4):
 
 def train(writer, name, epoch_idx, data_loader, model, 
     optimizer, criterion, ckpt_path, save_ckpt, loss_stage,
-    print_attention_map=False, curriculum_learning=False, supervised_attn=False):
+    print_attention_map=False, curriculum_learning=False, supervised_attn=False, transfer=False):
     model.train()
     criterion2 = nn.CrossEntropyLoss()
     loss_array = np.array([100000.0] * 50)
@@ -46,17 +46,13 @@ def train(writer, name, epoch_idx, data_loader, model,
 
         # Forward pass
         optimizer.zero_grad()
-        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred = model(img, joints, task_id)
+        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred, action_embed = model(img, joints, task_id)
         # target_position_pred, attn_map = model(img, joints, task_id)
         loss1 = criterion(action_pred, next_joints)
         loss5 = criterion(target_position_pred, target_position)
         loss6 = criterion(displacement_pred, displacement)
         loss7 = criterion(joints_pred, joints)
         # loss8 = criterion2(task_pred, task_id)
-        print(action_pred.shape, next_joints.shape)
-        print(target_position_pred.shape, target_position.shape)
-        print(displacement_pred.shape, displacement.shape)
-        print(joints_pred.shape, joints.shape)
 
         # Attention Supervison for Target Position Task
         target_attn = attn_map[:, 0, -1]
@@ -66,10 +62,11 @@ def train(writer, name, epoch_idx, data_loader, model,
         # target_position_attn = attn_map2[:, 0, -1]
         loss_attn_target_position = criterion(target_position_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device))
 
-        # Attention Supervision for Displacement Task
-        end_effector_attn = torch.gather(attn_map2[:, 2, :], 1, pixel_position_to_attn_index(end_position, attn_map_offset=4))
-        loss_end_effector_attn = criterion(end_effector_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device))
-        #    + criterion(attn_map2[:, 2, 2], torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device))
+        if not transfer:
+            # Attention Supervision for Displacement Task
+            end_effector_attn = torch.gather(attn_map2[:, 2, :], 1, pixel_position_to_attn_index(end_position, attn_map_offset=4))
+            loss_end_effector_attn = criterion(end_effector_attn, torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device))
+            #    + criterion(attn_map2[:, 2, 2], torch.ones(attn_map2.shape[0], 1, dtype=torch.float32).to(device))
 
         displacement_attn = attn_map3[:, 2, 1] + attn_map3[:, 2, 3]
         loss_displacement_attn = criterion(displacement_attn, torch.ones(attn_map3.shape[0], 1, dtype=torch.float32).to(device))
@@ -93,7 +90,9 @@ def train(writer, name, epoch_idx, data_loader, model,
 
                     #######################################################
                     # This line works perfectly for target position prediction and displacement prediction
-                    loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000 + loss_displacement_attn * 5000
+                    loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_displacement_attn * 5000
+                    if not transfer:
+                        loss = loss + loss_end_effector_attn * 5000
                     #######################################################
 
                     #######################################################
@@ -103,14 +102,21 @@ def train(writer, name, epoch_idx, data_loader, model,
 
                     # loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000 + loss7 + loss1
 
-                    print(f'{loss_attn_target.item() * 5000:.2f}, {loss_attn_target_position.item() * 5000:.2f}, {loss_end_effector_attn.item() * 5000:.2f}, {loss_displacement_attn.item() * 5000:.2f}')
+                    if not transfer:
+                        print(f'{loss_attn_target.item() * 5000:.2f}, {loss_attn_target_position.item() * 5000:.2f}, {loss_end_effector_attn.item() * 5000:.2f}, {loss_displacement_attn.item() * 5000:.2f}')
+                    else:
+                        print(f'{loss_attn_target.item() * 5000:.2f}, {loss_attn_target_position.item() * 5000:.2f}, {loss_displacement_attn.item() * 5000:.2f}')
                 else:
                     loss = loss5
                 # print(loss5.item())
             elif loss_stage == 1:
-                loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000 + loss7 + loss_joints_attn * 5000
+                loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss7 + loss_joints_attn * 5000
+                if not transfer:
+                    loss = loss + loss_end_effector_attn * 5000
             elif loss_stage == 2:
-                loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss_end_effector_attn * 5000 + loss7 + loss_joints_attn * 5000 + loss1
+                loss = loss_attn_target_position * 5000 + loss_attn_target * 5000 + loss5 + loss6 + loss7 + loss_joints_attn * 5000 + loss1
+                if not transfer:
+                    loss = loss + loss_end_effector_attn * 5000
             else:
                 loss = loss1 + loss5 + loss6 + loss7
             loss_array[global_step % len(loss_array)] = loss.item()
@@ -339,7 +345,7 @@ def main_transfer(writer, name, batch_size=128):
 
     # load data
     dataset = ComprehensiveRobotDataset(
-        data_dir='./data_position_35_35_2000/', 
+        data_dir='./data_position_40_40_2000/', 
         use_trigonometric_representation=True, 
         use_delta=True,
         normalize=False,
@@ -365,7 +371,7 @@ def main_transfer(writer, name, batch_size=128):
     loss_stage = 0
     for i in range(500):
         loss_stage = train(writer, name, i, data_loader_train, model, optimizer, 
-            criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=print_attention_map)
+            criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=print_attention_map, transfer=True)
         test(writer, name, i + 1, data_loader_test, model, criterion, len(data_loader_train))
 
 
@@ -375,6 +381,6 @@ if __name__ == '__main__':
     # writer = SummaryWriter('runs/' + name)
     # main(writer, name)
 
-    name = 'train17-1-across-robot-trial-transfer-35-35'
+    name = 'train17-1-across-robot-trial-transfer-40-40'
     writer = SummaryWriter('runs/' + name)
     main_transfer(writer, name)
