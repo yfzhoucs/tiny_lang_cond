@@ -434,16 +434,14 @@ class ComprehensiveRobotDataset(Dataset):
         # This adds smoothness to the outputs.
         self.joints = np.concatenate(self.joints)
         if use_trigonometric_representation:
-            transform_matrix = np.array([[1, 1, 0, 0], [0, 0, 1, 1]])
-            self.joints = np.dot(self.joints, transform_matrix)
-            for i in range(2):
+            self.joints = np.repeat(self.joints, 2, axis=1)
+            for i in range(self.joints.shape[1] // 2):
                 self.joints[:, 2 * i] = np.sin(self.joints[:, 2 * i])
                 self.joints[:, 2 * i + 1] = np.cos(self.joints[:, 2 * i + 1])
         self.next_joints = np.concatenate(self.next_joints)
         if use_trigonometric_representation:
-            transform_matrix = np.array([[1, 1, 0, 0], [0, 0, 1, 1]])
-            self.next_joints = np.dot(self.next_joints, transform_matrix)
-            for i in range(2):
+            self.next_joints = np.repeat(self.next_joints, 2, axis=1)
+            for i in range(self.joints.shape[1] // 2):
                 self.next_joints[:, 2 * i] = np.sin(self.next_joints[:, 2 * i])
                 self.next_joints[:, 2 * i + 1] = np.cos(self.next_joints[:, 2 * i + 1])
 

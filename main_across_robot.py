@@ -46,7 +46,7 @@ def train(writer, name, epoch_idx, data_loader, model,
 
         # Forward pass
         optimizer.zero_grad()
-        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred, action_embed = model(img, joints, task_id)
+        action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred = model(img, joints, task_id)
         # target_position_pred, attn_map = model(img, joints, task_id)
         loss1 = criterion(action_pred, next_joints)
         loss5 = criterion(target_position_pred, target_position)
@@ -345,7 +345,7 @@ def main_transfer(writer, name, batch_size=128):
 
     # load data
     dataset = ComprehensiveRobotDataset(
-        data_dir='./data_position_40_40_2000/', 
+        data_dir='./data_position_3_joints_30_20_10_2000/', 
         use_trigonometric_representation=True, 
         use_delta=True,
         normalize=False,
@@ -360,8 +360,8 @@ def main_transfer(writer, name, batch_size=128):
                                           shuffle=False, num_workers=2)
 
     # load model
-    model = Backbone(128, 2, 3, 192, add_displacement=add_displacement)
-    model.load_state_dict(torch.load(ckpt))
+    model = Backbone(128, 2, 3, 192, add_displacement=add_displacement, three_joint_robot=True)
+    model.load_state_dict(torch.load(ckpt), strict=False)
     model = model.to(device)
     # optimizer = optim.AdamW(model.parameters(), weight_decay=1)
     optimizer = optim.Adam(model.parameters())
@@ -381,6 +381,6 @@ if __name__ == '__main__':
     # writer = SummaryWriter('runs/' + name)
     # main(writer, name)
 
-    name = 'train17-1-across-robot-trial-transfer-40-40'
+    name = 'train17-1-across-robot-trial-transfer-30-20-10'
     writer = SummaryWriter('runs/' + name)
     main_transfer(writer, name)

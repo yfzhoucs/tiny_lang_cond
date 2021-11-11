@@ -179,10 +179,11 @@ class MultiheadAttention(nn.Module):
 
 # Some code from DETR
 class Backbone(nn.Module):
-    def __init__(self, img_size, num_joints, num_tasks, embedding_size, add_displacement=False, ngf=64, channel_multiplier=4, device=torch.device('cuda')):
+    def __init__(self, img_size, num_joints, num_tasks, embedding_size, add_displacement=False, ngf=64, channel_multiplier=4, device=torch.device('cuda'), three_joint_robot=False):
         super(Backbone, self).__init__()
 
         self.add_displacement = add_displacement
+        self.three_joint_robot = three_joint_robot
         self.device = device
 
         # Visual Pathway
@@ -205,6 +206,8 @@ class Backbone(nn.Module):
         
         # Joints Pathway
         self.joint_encoder = JointEncoder(num_joints * 2, embedding_size)
+        self.joint_encoder_3_joints = JointEncoder(3 * 2, embedding_size)
+
         self.joint_embed_to_qkv = []
         for i in range(3):
             self.joint_embed_to_qkv.append(nn.Sequential(
@@ -275,6 +278,8 @@ class Backbone(nn.Module):
 
         # Post Attention: action prediction
         self.controller = Controller(embedding_size, num_joints * 2)
+        self.controller_3_joints = Controller(embedding_size, 3 * 2)
+
         self.embed_to_target_position = nn.Sequential(
             nn.Linear(embedding_size, 128), 
             nn.SELU(), 
@@ -294,6 +299,12 @@ class Backbone(nn.Module):
             nn.Linear(64, 64), 
             nn.SELU(), 
             nn.Linear(64, num_joints * 2))
+        self.joints_predictor_3_joints = nn.Sequential(
+            nn.Linear(embedding_size, 64), 
+            nn.SELU(), 
+            nn.Linear(64, 64), 
+            nn.SELU(), 
+            nn.Linear(64, 3 * 2))
 
     def _embed_to_qkv_(self, embed, qkv_list):
         q = qkv_list[0](embed)
@@ -325,7 +336,10 @@ class Backbone(nn.Module):
         return img_embed_query, img_embed_key, img_embed_value
 
     def _joints_pathway_(self, joints):
-        joints_embedding = self.joint_encoder(joints).unsqueeze(1)
+        if not self.three_joint_robot:
+            joints_embedding = self.joint_encoder(joints).unsqueeze(1)
+        else:
+            joints_embedding = self.joint_encoder_3_joints(joints).unsqueeze(1)
         joints_embed_query, joints_embed_key, joints_embed_value = self._embed_to_qkv_(joints_embedding, self.joint_embed_to_qkv)
         return joints_embed_query, joints_embed_key, joints_embed_value
 
@@ -435,11 +449,15 @@ class Backbone(nn.Module):
         # Post-attn operations. Predict the results from the state embedding
         target_position_pred = self.embed_to_target_position(state_embedding2[:,0,:])
         # target_position_pred = self.embed_to_target_position(state_embedding3[:, 2, :])
-        joints_pred = self.joints_predictor(state_embedding3[:,3,:])
-        action_pred = self.controller(state_embedding4[:,1,:])
+        if not self.three_joint_robot:
+            action_pred = self.controller(state_embedding4[:,1,:])
+            joints_pred = self.joints_predictor(state_embedding3[:,3,:])
+        else:
+            action_pred = self.controller_3_joints(state_embedding4[:,1,:])
+            joints_pred = self.joints_predictor_3_joints(state_embedding3[:,3,:])
 
         if self.add_displacement:
             displacement_pred = self.embed_to_displacement(state_embedding3[:, 2, :])
             # displacement_pred = self.embed_to_displacement(state_embedding2[:,0,:])
-            return action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred, state_embedding4[:,1,:]
+            return action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred
         return action_pred, target_position_pred, attn_map, joints_pred
