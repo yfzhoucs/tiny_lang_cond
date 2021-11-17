@@ -1,6 +1,6 @@
 from collect_data import l2
 from envs import reach
-from models.backbone_supervised_attn import Backbone
+from models.backbone_across_robot import Backbone
 import numpy as np
 import torch
 
@@ -24,12 +24,11 @@ def even_distribution_in_a_circle(circle_radius=50):
 
 
 def convert_obversations_to_torch(joints, img, accumulate_angles=False):
-    joints = np.reshape(joints, (1, 2))
+    joints = np.reshape(joints, (1, -1))
     if accumulate_angles:
         joints[0][1] = joints[0][1] + joints[0][0]
-    transform_matrix = np.array([[1, 1, 0, 0], [0, 0, 1, 1]])
-    joints = np.dot(joints, transform_matrix)
-    for i in range(2):
+    joints = np.repeat(joints, 2, axis=1)
+    for i in range(joints.shape[1] // 2):
         joints[:, 2 * i] = np.sin(joints[:, 2 * i])
         joints[:, 2 * i + 1] = np.cos(joints[:, 2 * i + 1])
     joints = torch.tensor(joints, dtype=torch.float32)
@@ -40,15 +39,14 @@ def convert_obversations_to_torch(joints, img, accumulate_angles=False):
 
 def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False, accumulate_angles=False):
     action = action.detach().numpy()
-
     if use_delta:
         current_joint_angles = current_joint_angles.to('cpu').numpy()
-        action = action / 100
+        action = action / 200
         action = current_joint_angles + action
 
     # Convert from sin-cos space to rad space
-    action_rad = np.array([0., 0.])
-    for i in range(2):
+    action_rad = np.array([0. for i in range(action.shape[-1] // 2)])
+    for i in range(action.shape[-1] // 2):
         # if action[0][i * 2 + 1] < -1:
         #     action[0][i * 2 + 1] = -1
         # if action[0][i * 2 + 1] > 1:
@@ -68,9 +66,10 @@ def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False, 
 
 def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, error_limit=5, accumulate_angles=False):
     task_id = torch.tensor([task_id], dtype=torch.int32)
+    model = model.eval()
 
     # Get observations from t_0
-    joints = env.reset(np.random.random((2,)) * np.pi * 2)
+    joints = env.reset(np.random.random((robot.lengths.shape[0],)) * np.pi * 2)
     img = env.render(mode="rgb_array")
     squared_error = l2(robot.get_end_position(), (target_x, target_y))
 
@@ -85,7 +84,8 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         task_id = task_id.to(device)
         attn_mask = np.ones((260, 260))
         attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        action, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id, attn_mask=attn_mask)
+        # action, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id, attn_mask=attn_mask)
+        action, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred = model(img, joints, task_id)
         action = action.to('cpu')
 
         # Execute action
@@ -111,7 +111,7 @@ def main(model_path, use_delta, input_goal=False, accumulate_angles=False):
     # Create an environment
     screen_width = 128
     screen_height = 128
-    robot = reach.SimpleRobot([30., 30.])
+    robot = reach.SimpleRobot([6., 6., 6., 6., 6., 6., 6., 6., 6., 6.])
     object_geom_list = reach.ObjectList([
         # [x, y, radius, (r, g, b)]
         [*even_distribution_in_a_circle(circle_radius=50), 5., (1, 0, 0)],
@@ -131,11 +131,11 @@ def main(model_path, use_delta, input_goal=False, accumulate_angles=False):
     target_y = object_geom_list.get_objects()[goal][1]
 
     # load model
-    model = Backbone(128, 2, 3, 192, add_displacement=True, device=device).to(device)
-    model.load_state_dict(torch.load(model_path))
+    model = Backbone(128, 10, 3, 192, add_displacement=True, device=device, ignore_default_2_joint_head=True).to(device)
+    model.load_state_dict(torch.load(model_path), strict=False)
 
     # Execution loop
-    success = execution_loop(model, env, robot, goal, target_x, target_y, use_delta, accumulate_angles)
+    success = execution_loop(model, env, robot, goal, target_x, target_y, use_delta, accumulate_angles=accumulate_angles)
 
     # Close the environment
     env.close()
@@ -144,8 +144,8 @@ def main(model_path, use_delta, input_goal=False, accumulate_angles=False):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/train11-3-supervised-attn5-bs144/1.pth'
-    use_delta = True
+    model_path = '/share/yzhou298/ckpts/train17-1-across-robot-trial-transfer-6-6-6-6-6-6-6-6-6-6/105.pth'
+    use_delta = False
     accumulate_angles = False
     trials = 100
     success = 0

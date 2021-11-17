@@ -103,9 +103,14 @@ class Line(Geom):
 
 
 class SimpleRobot():
-    def __init__(self, lengths=np.array([100., 100.]), joints=np.array([0., 0.])):
+    def __init__(self, lengths=np.array([100., 100.]), joints=None):
         self.lengths = np.array(lengths)
-        self.joints = np.array(joints)
+        if joints is None:
+            self.joints = np.zeros((self.lengths.shape[0],))
+        else:
+            self.joints = np.array(joints)
+
+        assert self.lengths.shape[0] == self.joints.shape[0]
 
     def get_end_position(self):
         start_x = 0

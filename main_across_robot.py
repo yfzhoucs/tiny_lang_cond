@@ -345,7 +345,7 @@ def main_transfer(writer, name, batch_size=128):
 
     # load data
     dataset = ComprehensiveRobotDataset(
-        data_dir='./data_position_3_joints_30_20_10_2000/', 
+        data_dir='./data_position_10_joints_6_6_6_6_6_6_6_6_6_6_2000/', 
         use_trigonometric_representation=True, 
         use_delta=True,
         normalize=False,
@@ -360,7 +360,7 @@ def main_transfer(writer, name, batch_size=128):
                                           shuffle=False, num_workers=2)
 
     # load model
-    model = Backbone(128, 2, 3, 192, add_displacement=add_displacement, three_joint_robot=True)
+    model = Backbone(128, 10, 3, 192, add_displacement=add_displacement, ignore_default_2_joint_head=True)
     model.load_state_dict(torch.load(ckpt), strict=False)
     model = model.to(device)
     # optimizer = optim.AdamW(model.parameters(), weight_decay=1)
@@ -381,6 +381,6 @@ if __name__ == '__main__':
     # writer = SummaryWriter('runs/' + name)
     # main(writer, name)
 
-    name = 'train17-1-across-robot-trial-transfer-30-20-10'
+    name = 'train17-1-across-robot-trial-transfer-6-6-6-6-6-6-6-6-6-6'
     writer = SummaryWriter('runs/' + name)
     main_transfer(writer, name)
