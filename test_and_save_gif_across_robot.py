@@ -1,11 +1,12 @@
 from collect_data import l2
 from envs import reach
-# from models.backbone_across_robot import Backbone
-from models.backbone_change_attn_order import Backbone
-# from models.backbone_cortex_inject import Backbone
-
+from models.backbone_across_robot import Backbone
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+# from matplotlib.animation import PillowWriter
+from matplotlib.artist import Artist
 
 
 if torch.cuda.is_available():
@@ -13,6 +14,14 @@ if torch.cuda.is_available():
 else:
     device = torch.device('cpu')
 # device = torch.device('cpu')
+
+
+fig = plt.figure()
+task_dict = {
+    0: 'Red',
+    1: 'Green',
+    2: 'Blue'
+}
 
 
 # https://stackoverflow.com/questions/46996866/sampling-uniformly-within-the-unit-circle
@@ -24,6 +33,7 @@ def even_distribution_in_a_circle(circle_radius=50):
     y = circle_radius * np.sin(angle)
 
     return x, y
+
 
 
 def convert_obversations_to_torch(joints, img, accumulate_angles=False):
@@ -67,7 +77,7 @@ def convert_action_to_numpy(action, current_joint_angles=None, use_delta=False, 
     return action_rad
 
 
-def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, error_limit=5, accumulate_angles=False):
+def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, error_limit=5, accumulate_angles=False, count=0):
     task_id = torch.tensor([task_id], dtype=torch.int32)
     model = model.eval()
 
@@ -78,16 +88,19 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
 
     # Start looping
     step = 0
-    while step < 150:
+    ims = []
+    plt.clf()
+    ax = plt.imshow(img)
+    # txt = plt.text(0, 0, str(step))
+    plt.title(f'Task == {task_dict[task_id.item()]}', fontsize=20)
+    ims.append([ax])
+    while step < 300:
 
         # Predict action from the model
         joints, img = convert_obversations_to_torch(joints, img, accumulate_angles)
         img = img.to(device)
         joints = joints.to(device)
         task_id = task_id.to(device)
-        attn_mask = np.ones((260, 260))
-        attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
-        # action, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id, attn_mask=attn_mask)
         action, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred = model(img, joints, task_id)
         action = action.to('cpu')
 
@@ -103,18 +116,42 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         print(f'displacement_pred {displacement_pred.detach().cpu().numpy()[0]}')
         print('error', step, np.sqrt(squared_error))
         # input()
+        
+        ax = plt.imshow(img)
+        # status0 = plt.text(-50, -10, 'step:', fontsize=12)
+        # status1 = plt.text(-50, 15, 'target_pos:', fontsize=12)
+        # status2 = plt.text(-50, 40, 'displacement:', fontsize=12)
+        # status3 = plt.text(-50, 65, 'joint angle:', fontsize=12)
+        # mytxt0 = plt.text(-50, 0, str(step), fontsize=12)
+        # mytxt1 = plt.text(-50, 25, f'({int(target_position_pred[0][0])}, {int(target_position_pred[0][1])})', fontsize=12)
+        # mytxt2 = plt.text(-50, 50, f'({int(displacement_pred[0][0])}, {int(displacement_pred[0][1])})', fontsize=12)
+        # mytxt3 = plt.text(-50, 75, f'0: ({joints_pred[0][0]/100:.2f}, {joints_pred[0][1]/100:.2f})', fontsize=12)
+        # mytxt4 = plt.text(-50, 85, f'1: ({joints_pred[0][2]/100:.2f}, {joints_pred[0][3]/100:.2f})', fontsize=12)
+        # x_values = [-64, -32, 0, 32, 64]
+        # x = [0, 32, 64, 96, 128]
+        # y_values = [64, 32, 0, -32, -64]
+        # y = [0, 32, 64, 96, 128]
+        # plt.xticks(x, x_values)
+        # plt.yticks(y, y_values)
+        # ims.append([ax, mytxt0, mytxt1, mytxt2, mytxt3, mytxt4, status0, status1, status2, status3])
+        ims.append([ax])
 
         if squared_error < error_limit * error_limit:
             print('done')
+            ani = animation.ArtistAnimation(fig, ims, interval=100, blit=True, repeat_delay=1000)
+            ani.save(f"6-6-6-6-6-6-6-6-6-6-smooth-{count}.gif", writer='imagemagick')
             return 1
+
+    # ani = animation.ArtistAnimation(fig, ims, interval=100, blit=True, repeat_delay=1000)
+    # ani.save(f"{count}.gif", writer='imagemagick')
     return 0
 
 
-def main(model_path, use_delta, input_goal=False, accumulate_angles=False):
+def main(model_path, use_delta, input_goal=False, accumulate_angles=False, count=0):
     # Create an environment
     screen_width = 128
     screen_height = 128
-    robot = reach.SimpleRobot([30., 30.])
+    robot = reach.SimpleRobot([6., 6., 6., 6., 6., 6., 6., 6., 6., 6.])
     object_geom_list = reach.ObjectList([
         # [x, y, radius, (r, g, b)]
         [*even_distribution_in_a_circle(circle_radius=50), 5., (1, 0, 0)],
@@ -134,12 +171,11 @@ def main(model_path, use_delta, input_goal=False, accumulate_angles=False):
     target_y = object_geom_list.get_objects()[goal][1]
 
     # load model
-    # model = Backbone(128, 2, 3, 192, add_displacement=True, device=device, ignore_default_2_joint_head=False).to(device)
-    model = Backbone(128, 2, 3, 192, add_displacement=True, device=device).to(device)
+    model = Backbone(128, 10, 3, 192, add_displacement=True, device=device, ignore_default_2_joint_head=True).to(device)
     model.load_state_dict(torch.load(model_path), strict=False)
 
     # Execution loop
-    success = execution_loop(model, env, robot, goal, target_x, target_y, use_delta, accumulate_angles=accumulate_angles)
+    success = execution_loop(model, env, robot, goal, target_x, target_y, use_delta, accumulate_angles=accumulate_angles, count=count)
 
     # Close the environment
     env.close()
@@ -148,13 +184,13 @@ def main(model_path, use_delta, input_goal=False, accumulate_angles=False):
 
 
 if __name__ == '__main__':
-    model_path = '/share/yzhou298/ckpts/train17-1-across-robot-trial/46.pth'
+    model_path = '/share/yzhou298/ckpts/train17-1-across-robot-trial-transfer-6-6-6-6-6-6-6-6-6-6/200.pth'
     use_delta = True
     accumulate_angles = False
-    trials = 300
+    trials = 100
     success = 0
     for i in range(trials):
-        success += main(model_path, use_delta, input_goal=False, accumulate_angles=accumulate_angles)
+        success += main(model_path, use_delta, input_goal=False, accumulate_angles=accumulate_angles, count=i)
         print(i + 1, success)
     success_rate = success / trials
     print(success_rate)

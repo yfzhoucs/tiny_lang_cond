@@ -225,6 +225,11 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
         loss = 0
         loss5_accu = 0
         idx = 0
+        error_target_position = 0
+        error_displacement = 0
+        error_joints_prediction = 0
+        num_datapoints = 0
+        
         for img, joints, task_id, end_position, object_list, target_position, next_joints, displacement in data_loader:
             global_step = epoch_idx * len(data_loader) + idx
 
@@ -247,6 +252,10 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
             loss7 = criterion(joints_pred, joints)
             loss += loss1.item()
             loss5_accu += loss5.item()
+            error_target_position += torch.sum(torch.sum((target_position_pred - target_position) ** 2, axis=1) ** 0.5)
+            error_displacement += torch.sum(torch.sum((displacement_pred - displacement) ** 2, axis=1) ** 0.5)
+            error_joints_prediction += torch.sum(torch.sum((joints_pred - joints) ** 2, axis=1) ** 0.5)
+            num_datapoints += target_position_pred.shape[0]
 
             # Print Attention Map
             if print_attention_map:
@@ -278,6 +287,7 @@ def test(writer, name, epoch_idx, data_loader, model, criterion, train_dataset_s
 
             # Print
             print(f'test: epoch {epoch_idx}, step {idx}, loss1 {loss1.item():.2f}, loss5 {loss5.item():.2f}, loss6 {loss6.item():.2f}, loss7 {loss7.item():.2f}')
+            print(error_target_position / num_datapoints, error_displacement / num_datapoints, error_joints_prediction / num_datapoints)
 
         # Log
         loss /= idx
@@ -341,11 +351,11 @@ def main_transfer(writer, name, batch_size=128):
     supervised_attn = True
     curriculum_learning = True
     print_attention_map = False
-    ckpt = r'/share/yzhou298/ckpts/train17-1-across-robot-trial/32.pth'
+    ckpt = r'/share/yzhou298/ckpts/train17-1-across-robot-trial/46.pth'
 
     # load data
     dataset = ComprehensiveRobotDataset(
-        data_dir='./data_position_10_joints_6_6_6_6_6_6_6_6_6_6_2000/', 
+        data_dir='./data_position_part3/', 
         use_trigonometric_representation=True, 
         use_delta=True,
         normalize=False,
@@ -360,7 +370,7 @@ def main_transfer(writer, name, batch_size=128):
                                           shuffle=False, num_workers=2)
 
     # load model
-    model = Backbone(128, 10, 3, 192, add_displacement=add_displacement, ignore_default_2_joint_head=True)
+    model = Backbone(128, 2, 3, 192, add_displacement=add_displacement, ignore_default_2_joint_head=False)
     model.load_state_dict(torch.load(ckpt), strict=False)
     model = model.to(device)
     # optimizer = optim.AdamW(model.parameters(), weight_decay=1)
@@ -369,9 +379,9 @@ def main_transfer(writer, name, batch_size=128):
 
     # train n epoches
     loss_stage = 0
-    for i in range(500):
-        loss_stage = train(writer, name, i, data_loader_train, model, optimizer, 
-            criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=print_attention_map, transfer=True)
+    for i in range(1):
+        # loss_stage = train(writer, name, i, data_loader_train, model, optimizer, 
+        #     criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=print_attention_map, transfer=True)
         test(writer, name, i + 1, data_loader_test, model, criterion, len(data_loader_train))
 
 
@@ -381,6 +391,6 @@ if __name__ == '__main__':
     # writer = SummaryWriter('runs/' + name)
     # main(writer, name)
 
-    name = 'train17-1-across-robot-trial-transfer-6-6-6-6-6-6-6-6-6-6'
+    name = 'test17-1-across-robot-trial-original'
     writer = SummaryWriter('runs/' + name)
     main_transfer(writer, name)

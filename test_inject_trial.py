@@ -1,7 +1,7 @@
 from collect_data import l2
 from envs import reach
-# from models.backbone_across_robot import Backbone
-from models.backbone_change_attn_order import Backbone
+from models.backbone_across_robot_inject_trial import Backbone
+# from models.backbone_change_attn_order import Backbone
 # from models.backbone_cortex_inject import Backbone
 
 import numpy as np
@@ -85,10 +85,16 @@ def execution_loop(model, env, robot, task_id, target_x, target_y, use_delta, er
         img = img.to(device)
         joints = joints.to(device)
         task_id = task_id.to(device)
-        attn_mask = np.ones((260, 260))
-        attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
+        # attn_mask = np.ones((260, 260))
+        # attn_mask = torch.tensor(attn_mask, dtype=torch.float32).to(device)
         # action, target_position_pred, displacement_pred, displacement_embed, attn_map, joints_pred = model(img, joints, task_id, attn_mask=attn_mask)
-        action, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred = model(img, joints, task_id)
+        target_pos_embed = torch.tensor(np.load('2.npy')).to(device)
+        action, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred, target_pos_embed = model(img, joints, task_id, target_pos_embed=target_pos_embed)
+        target_pos_embed = target_pos_embed.detach().cpu().numpy()
+        # print(target_pos_embed)
+        # # exit()
+        # np.save(f'{task_id[0]}.npy', target_pos_embed)
+        # exit()
         action = action.to('cpu')
 
         # Execute action

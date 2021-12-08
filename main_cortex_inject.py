@@ -298,6 +298,10 @@ def test(writer, name, epoch_idx, data_loader, model, target_embed_generator, cr
                 # noise = torch.randn(target_embed.shape[0], target_embed_generator.noise_dim).to(device)
                 # injected_target_embed = target_embed_generator(torch.ones(target_embed.shape[0], dtype=torch.int64).to(device) * injected_target_id)
                 injected_target_embed = embeds[injected_target_id]
+                injected_target_embed = injected_target_embed.detach().cpu().numpy()
+                np.save(f'{injected_target_id}.npy', injected_target_embed)
+                exit()
+
                 action_pred, target_position_pred, displacement_pred, attn_map, attn_map2, attn_map3, attn_map4, joints_pred, target_embed = model(
                     img, joints, task_id, injected_target_embed=injected_target_embed)
                 target_position = object_list[:, injected_target_id * 2: injected_target_id * 2 + 2]
@@ -449,15 +453,17 @@ def main(writer, name, batch_size=96):
 
     # train n epoches
     loss_stage = 0
-    # model.load_state_dict(torch.load('/share/yzhou298/train15-2-cortex-injection-gan-target-embed-visualize/3.pth'))
+    model.load_state_dict(torch.load('/share/yzhou298/ckpts/train17-1-across-robot-trial/40.pth'), strict=False)
     for i in range(500):
-        loss_stage = train(writer, name, i, data_loader_train, model, target_embed_generator, target_embed_discriminator, optimizer, optimizer_generator, optimizer_discriminator, 
-            criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=print_attention_map)
+        # loss_stage = train(writer, name, i, data_loader_train, model, target_embed_generator, target_embed_discriminator, optimizer, optimizer_generator, optimizer_discriminator, 
+        #     criterion, ckpt_path, save_ckpt, loss_stage, supervised_attn=supervised_attn, curriculum_learning=curriculum_learning, print_attention_map=print_attention_map)
         test(writer, name, i + 1, data_loader_test, model, target_embed_generator, criterion, len(data_loader_train), loss_stage, print_attention_map=False, log=True)
 
 if __name__ == '__main__':
     # Debussy
-    name = 'train15-3-cortex-injection-gan-target-embed-visualize'
-    writer = SummaryWriter('runs/' + name)
+    # name = 'train15-3-cortex-injection-gan-target-embed-visualize'
+    # writer = SummaryWriter('runs/' + name)
 
+    writer = None
+    name = ''
     main(writer, name)
