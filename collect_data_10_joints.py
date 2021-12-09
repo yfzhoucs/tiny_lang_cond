@@ -113,8 +113,8 @@ def even_distribution_in_a_circle(circle_radius=50):
     length = np.sqrt(np.random.uniform(0, 1))
     angle = np.pi * np.random.uniform(0, 2)
 
-    x = circle_radius * np.cos(angle)
-    y = circle_radius * np.sin(angle)
+    x = circle_radius * np.cos(angle) * length
+    y = circle_radius * np.sin(angle) * length
 
     return x, y
 

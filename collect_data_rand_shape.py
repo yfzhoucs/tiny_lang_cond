@@ -1,21 +1,21 @@
 import numpy as np
-from envs import reach
+from envs import reach_random_shape as reach
 import torch
 import torch.nn as nn
 import os
 import matplotlib.pyplot as plt
 
 
-# https://www.titanwolf.org/Network/q/8f901b91-0923-43ed-90fd-bf5f0143d9a1/y
-def disable_view_window():
-    from gym.envs.classic_control import rendering
-    org_constructor = rendering.Viewer.__init__
+# # https://www.titanwolf.org/Network/q/8f901b91-0923-43ed-90fd-bf5f0143d9a1/y
+# def disable_view_window():
+#     from gym.envs.classic_control import rendering
+#     org_constructor = rendering.Viewer.__init__
 
-    def constructor(self, *args, **kwargs):
-        org_constructor(self, *args, **kwargs)
-        self.window.set_visible(visible=False)
+#     def constructor(self, *args, **kwargs):
+#         org_constructor(self, *args, **kwargs)
+#         self.window.set_visible(visible=False)
 
-    rendering.Viewer.__init__ = constructor
+#     rendering.Viewer.__init__ = constructor
 
 
 def l2(pos1, pos2):
@@ -121,19 +121,21 @@ def even_distribution_in_a_circle(circle_radius=50):
 
 def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disable_window=True):
     # Create an environment
-    robot = reach.SimpleRobot([30., 30.])
-    object_geom_list = reach.ObjectList([
-        # [x, y, radius, (r, g, b)]
-        [*even_distribution_in_a_circle(circle_radius=50), 5., (1, 0, 0)],
-        [*even_distribution_in_a_circle(circle_radius=50), 5., (0, 1, 0)],
-        [*even_distribution_in_a_circle(circle_radius=50), 5., (0, 0, 1)]
-    ], screen_width=screen_width, screen_height=screen_height)
+    robot = reach.SimpleRobot([30., 20.])
+    object_geom_list = []
+    num_objs = np.random.randint(3, 5)
+    for obj_id in range(num_objs):
+        # [x, y, radius, (r, g, b), shape]
+        my_obj = [*even_distribution_in_a_circle(circle_radius=50), np.random.uniform(5, 10), np.eye(3)[np.random.randint(3)], np.random.randint(3)],
+        object_geom_list.append(*my_obj)
+    object_geom_list = reach.ObjectList(
+        object_geom_list, screen_width=screen_width, screen_height=screen_height)
     env = reach.Reach(
         robot=robot, object_list=object_geom_list,
         screen_width=screen_width, screen_height=screen_height)
 
-    if disable_window:
-        disable_view_window()
+    # if disable_window:
+    #     disable_view_window()
     object_list = object_geom_list.get_objects()
 
     # Select a goal
@@ -147,7 +149,7 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disabl
     recorder = Recorder(data_dir, data_id)
     recorder.record_goal(object_id)
     recorder.record_object_positions(object_list)
-    joints = env.reset(np.random.random((2,)) * np.pi * 2)
+    joints = env.reset(np.random.random((len(robot.lengths),)) * np.pi * 2)
     img = env.render(mode="rgb_array")
     step = 0
 
@@ -181,10 +183,10 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disabl
 if __name__ == '__main__':
     screen_width = 128
     screen_height = 128
-    data_dir = './data_position_part3/'
+    data_dir = './data_position_random_shape_30_20_part1/'
 
     if not os.path.isdir(data_dir):
         os.mkdir(data_dir)
-    for i in range(2978, 3000):
+    for i in range(0, 1000):
         data_id = i
         collect_sequence_data(data_id, screen_width, screen_height, data_dir)
