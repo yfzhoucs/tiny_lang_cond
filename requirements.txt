@@ -4,3 +4,4 @@ transformers
 tensorboard
 matplotlib
 scikit-image
+gym
