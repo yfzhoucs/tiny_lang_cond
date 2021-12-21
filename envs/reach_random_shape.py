@@ -40,7 +40,6 @@ except ImportError as e:
     )
 
 
-
 class Attr(object):
     def enable(self):
         raise NotImplementedError
@@ -129,7 +128,7 @@ class SimpleRobot():
 
 class ObjectList():
     def __init__(self, list_of_objects=[[50, 50, 5, (1, 0, 0), 0]], screen_width=256, screen_height=256):
-        #[[x1, y1, r1, (r1, g1, b1), s1], [x2, y2, r2, (r2, g2, b2), s2], ...]
+        # [[x1, y1, r1, (r1, g1, b1), s1], [x2, y2, r2, (r2, g2, b2), s2], ...]
         # s = {0: circle, 1: square, 2: triangle}
         self.list_of_object_geoms = []
         print(list_of_objects)
@@ -143,9 +142,9 @@ class ObjectList():
             elif list_of_objects[i][4] == 1:
                 r = list_of_objects[i][2]
                 v = [(0 - r, 0 - r),
-                    (0 - r, 0 + r),
-                    (0 + r, 0 + r),
-                    (0 + r, 0 - r)]
+                     (0 - r, 0 + r),
+                     (0 + r, 0 + r),
+                     (0 + r, 0 - r)]
                 my_obj = rendering.make_polygon(v)
             elif list_of_objects[i][4] == 2:
                 v = []
@@ -155,7 +154,8 @@ class ObjectList():
             else:
                 raise NotImplementedError
 
-            my_obj_trans = rendering.Transform(translation=(list_of_objects[i][0] + screen_width / 2, list_of_objects[i][1] + screen_height / 2))
+            my_obj_trans = rendering.Transform(
+                translation=(list_of_objects[i][0] + screen_width / 2, list_of_objects[i][1] + screen_height / 2))
             my_obj.add_attr(my_obj_trans)
             my_obj.set_color(*list_of_objects[i][3])
             self.list_of_object_geoms.append(my_obj)
@@ -175,11 +175,10 @@ class ObjectList():
 class Reach(gym.Env):
     metadata = {'render.modes': ['human']}
 
-
     def __init__(self, robot=SimpleRobot(), object_list=ObjectList(), screen_width=256, screen_height=256):
         # The robot
         self.robot = robot
-        self.observation_space = spaces.Box(low=0, high=np.pi*2, shape=robot.joints.shape)
+        self.observation_space = spaces.Box(low=0, high=np.pi * 2, shape=robot.joints.shape)
         self.action_space = spaces.Box(low=-np.Inf, high=np.Inf, shape=robot.joints.shape)
 
         # Objects
@@ -196,7 +195,8 @@ class Reach(gym.Env):
         # action is target angles of the joints
         assert action.shape[0] == self.robot.joints.shape[0]
         for i in range(action.shape[0]):
-            self.robot.joints[i] = self.robot.joints[i] + self.Kp * self._ang_diff(action[i], self.robot.joints[i]) * self.dt
+            self.robot.joints[i] = self.robot.joints[i] + self.Kp * self._ang_diff(action[i],
+                                                                                   self.robot.joints[i]) * self.dt
         return self.robot.joints, 0, False, {}
 
     def reset(self, joints=np.zeros((2,))):
@@ -208,7 +208,6 @@ class Reach(gym.Env):
 
         # if not initialized, initialize it
         if self.viewer is None:
-
             # set up a window
             self.viewer = rendering.Viewer(self.screen_width, self.screen_height)
 
@@ -233,7 +232,6 @@ class Reach(gym.Env):
             jointtrans = rendering.Transform(translation=(start_x, start_y))
             joint.add_attr(jointtrans)
             self.viewer.add_onetime(joint)
-
 
         return self.viewer.render(return_rgb_array=mode == "rgb_array")
 
@@ -267,4 +265,3 @@ if __name__ == '__main__':
             state, _, _, _ = env.step(np.array([5, 6]))
 
     env.close()
-

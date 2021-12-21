@@ -94,13 +94,17 @@ class Recorder:
         self.joints_seq.append(np.array(joints, copy=True))
         self.end_positions_seq.append(np.array(end_position, copy=True))
 
-    def record_goal(self, object_id):
-        with open(self.data_dir + '/instructions.txt', 'a') as f:
-            f.write(f'{self.data_id} {object_id}\n')
+    def record_goal(self, object_id, store_data_id=False):
+        with open(self.id_dir + '/instructions.txt', 'a') as f:
+            if store_data_id:
+                f.write(f'{self.data_id} {object_id}\n')
+            else:
+                f.write(f'{object_id}\n')
 
-    def record_object_positions(self, object_list):
-        with open(self.data_dir + '/object_lists.txt', 'a') as f:
-            f.write(f'{self.data_id}, ')
+    def record_object_positions(self, object_list, store_data_id=False):
+        with open(self.id_dir + '/object_lists.txt', 'a') as f:
+            if store_data_id:
+                f.write(f'{self.data_id}, ')
             for i in range(len(object_list)):
                 position_x = object_list[i][0]
                 position_y = object_list[i][1]
@@ -109,9 +113,9 @@ class Recorder:
             f.write(f'\n')
 
     def record_user_input(self, positive_action, negative_action):
-        with open(os.path.join(self.data_dir, 'positive_action_user_inputs.txt'), 'a') as f:
+        with open(os.path.join(self.id_dir, 'positive_action_user_inputs.txt'), 'a') as f:
             f.write(f'{self.data_id}, {positive_action}\n')
-        with open(os.path.join(self.data_dir, 'negative_action_user_inputs.txt'), 'a') as f:
+        with open(os.path.join(self.id_dir, 'negative_action_user_inputs.txt'), 'a') as f:
             f.write(f'{self.data_id}, {negative_action}\n')
 
 
@@ -126,7 +130,7 @@ def even_distribution_in_a_circle(circle_radius=50):
     return x, y
 
 
-def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disable_window=True):
+def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disable_window=True, step_threshold=250):
     # Create an environment
     robot = reach.SimpleRobot([30., 30.])
     object_geom_list = []
@@ -178,6 +182,9 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disabl
 
         # Record joints and image
         recorder.record_step(img, joints, robot.get_end_position(), step)
+
+        if step >= step_threshold:
+            break
 
     recorder.save_joints()
     recorder.save_end_positions()
