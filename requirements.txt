@@ -5,3 +5,4 @@ tensorboard
 matplotlib
 scikit-image
 gym
+pyglet

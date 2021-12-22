@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import os
 import matplotlib.pyplot as plt
+import json
 
 
 # # https://www.titanwolf.org/Network/q/8f901b91-0923-43ed-90fd-bf5f0143d9a1/y
@@ -112,11 +113,14 @@ class Recorder:
                 f.write(f'{position_x}, {position_y}, {radius}, ')
             f.write(f'\n')
 
-    def record_user_input(self, positive_action, negative_action):
-        with open(os.path.join(self.id_dir, 'positive_action_user_inputs.txt'), 'a') as f:
-            f.write(f'{self.data_id}, {positive_action}\n')
-        with open(os.path.join(self.id_dir, 'negative_action_user_inputs.txt'), 'a') as f:
-            f.write(f'{self.data_id}, {negative_action}\n')
+    def record_user_input(self, user_name, positive_action, negative_action):
+        exp_user_input = {
+            user_name: [positive_action, negative_action]
+        }
+        user_input_file = os.path.join(self.id_dir, 'user_inputs.json')
+        with open(user_input_file, 'w') as f:
+            json.dump(exp_user_input, f)
+            # f.write(f'{self.data_id}, {positive_action}\n')
 
 
 # https://stackoverflow.com/questions/46996866/sampling-uniformly-within-the-unit-circle
@@ -130,7 +134,8 @@ def even_distribution_in_a_circle(circle_radius=50):
     return x, y
 
 
-def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disable_window=True, step_threshold=250):
+def collect_sequence_data(data_id, screen_width, screen_height, data_dir, user_name,
+                          disable_window=True, step_threshold=250):
     # Create an environment
     robot = reach.SimpleRobot([30., 30.])
     object_geom_list = []
@@ -190,7 +195,7 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, disabl
     recorder.save_end_positions()
     positive_action_input = input("\nPlease describe action robot did as POSITIVE action\n")
     negative_action_input = input("\nPlease describe action robot did as NEGATIVE action\n")
-    recorder.record_user_input(positive_action_input, negative_action_input)
+    recorder.record_user_input(user_name, positive_action_input, negative_action_input)
     print(data_id, step)
 
     env.close()
@@ -201,8 +206,9 @@ if __name__ == '__main__':
     screen_height = 128
     data_dir = './data_position_random_shape_30_20_part1/'
 
+    user_name = input("\nPlease provide your username (It will be used to store data in JSON):\n")
     if not os.path.isdir(data_dir):
         os.mkdir(data_dir)
     for i in range(0, 1000):
         data_id = i
-        collect_sequence_data(data_id, screen_width, screen_height, data_dir)
+        collect_sequence_data(data_id, screen_width, screen_height, data_dir, user_name)
