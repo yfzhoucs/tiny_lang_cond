@@ -135,9 +135,9 @@ def even_distribution_in_a_circle(circle_radius=50):
 
 
 def collect_sequence_data(data_id, screen_width, screen_height, data_dir, user_name,
-                          disable_window=True, step_threshold=250):
+                          disable_window=True, step_threshold=300):
     # Create an environment
-    robot = reach.SimpleRobot([30., 30.])
+    robot = reach.SimpleRobot([30., 20.])
     object_geom_list = []
     num_objs = np.random.randint(3, 5)
     for obj_id in range(num_objs):
@@ -188,14 +188,18 @@ def collect_sequence_data(data_id, screen_width, screen_height, data_dir, user_n
         # Record joints and image
         recorder.record_step(img, joints, robot.get_end_position(), step)
 
+        # Check for step threshold
         if step >= step_threshold:
             break
 
     recorder.save_joints()
     recorder.save_end_positions()
-    positive_action_input = input("\nPlease describe action robot did as POSITIVE action\n")
-    negative_action_input = input("\nPlease describe action robot did as NEGATIVE action\n")
-    recorder.record_user_input(user_name, positive_action_input, negative_action_input)
+
+    # If username is provided, Take the user instructions
+    if user_name is not None:
+        positive_action_input = input("\nPlease describe action robot did as POSITIVE action\n")
+        negative_action_input = input("\nPlease describe action robot did as NEGATIVE action\n")
+        recorder.record_user_input(user_name, positive_action_input, negative_action_input)
     print(data_id, step)
 
     env.close()
@@ -205,8 +209,13 @@ if __name__ == '__main__':
     screen_width = 128
     screen_height = 128
     data_dir = './data_position_random_shape_30_20_part1/'
+    user_name = None
 
-    user_name = input("\nPlease provide your username (It will be used to store data in JSON):\n")
+    # Ask user if they want to give instructions
+    collect_user_input_flag = input("Do you want to provide instructions? y/n")
+    if 'y' in collect_user_input_flag or 'Y' in collect_user_input_flag:
+        user_name = input("\nPlease provide your username (It will be used to store data in JSON):\n")
+
     if not os.path.isdir(data_dir):
         os.mkdir(data_dir)
     for i in range(0, 1000):
